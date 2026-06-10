@@ -2568,6 +2568,7 @@ export default function App() {
     { id:"bat",          label:"BAT Compliance" },
     { id:"settings",     label:"Settings"      },
   ];
+  const clockDate = new Date().toLocaleDateString("en-GB");
 
   return (
     <div style={{ background:C.bg, color:C.ink, minHeight:"100vh", fontFamily:"'Segoe UI', system-ui, sans-serif" }}>
@@ -2575,20 +2576,11 @@ export default function App() {
       <div style={{ background:C.header, padding:"0 20px", borderBottom:`1px solid ${C.borderBright}` }}>
         <div style={{ maxWidth:900, margin:"0 auto", padding:"14px 0" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ background:C.gold, color:C.header, fontWeight:900, fontSize:14, padding:"4px 7px", borderRadius:2, fontFamily:MONO }}>{"<>"}</div>
-              <div>
-                <div style={{ color:C.gold, fontSize:15, fontWeight:800, letterSpacing:"0.03em" }}>CALDERS &amp; GRANDIDGE (BOSTON) LTD</div>
-                <div style={{ color:"#8fa3ba", fontSize:10, letterSpacing:"0.1em", textTransform:"uppercase" }}>Carbon Bed Abatement Control System</div>
-              </div>
+            <div style={{ color:C.gold, fontSize:16, fontWeight:800, letterSpacing:"0.03em" }}>
+              Calders and Grandidge Boston Ltd Carbon Bed Failure Prediction Model
             </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end", alignItems:"center" }}>
-              <span style={{ display:"inline-block", background:"#2d3f55", color:"#8fa3ba", border:"1px solid #4a6080", borderRadius:2, fontSize:9, fontWeight:700, letterSpacing:"0.1em", padding:"3px 8px", textTransform:"uppercase", fontFamily:MONO }}>PERMIT EPR/A2/1</span>
-              <span style={{ display:"inline-block", background:"transparent", color:"#8fa3ba", border:"1px solid #4a6080", borderRadius:2, fontSize:9, fontWeight:700, letterSpacing:"0.1em", padding:"3px 8px", textTransform:"uppercase", fontFamily:MONO }}>{MODEL_VERSION}</span>
-              <div style={{ color:"#8fa3ba", fontFamily:MONO, fontSize:12, border:"1px solid #4a6080", padding:"3px 8px" }}>{clockTime}</div>
-              {lastSaved && <div style={{ color:"#8fa3ba", border:"1px solid #4a6080", borderRadius:2, padding:"3px 8px", fontSize:9, fontWeight:700, fontFamily:MONO }}>Saved {lastSaved}</div>}
-              <span style={{ display:"inline-block", background:C.gold, color:C.header, border:`1px solid ${C.gold}`, borderRadius:2, fontSize:9, fontWeight:700, letterSpacing:"0.1em", padding:"3px 8px", textTransform:"uppercase", fontFamily:MONO }}>STS BREF BAT 51/52</span>
-              <span style={{ display:"inline-block", background:"transparent", color:C.rund, border:`1px solid ${C.rund}`, borderRadius:2, fontSize:9, fontWeight:700, letterSpacing:"0.1em", padding:"3px 8px", textTransform:"uppercase", fontFamily:MONO }}>RUNDVIRKE</span>
+            <div style={{ color:"#8fa3ba", fontFamily:MONO, fontSize:12, border:"1px solid #4a6080", padding:"3px 8px" }}>
+              {clockDate} {clockTime}
             </div>
           </div>
         </div>
