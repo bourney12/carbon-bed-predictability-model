@@ -342,15 +342,35 @@ function looCV(x1arr, x2arr, yarr, lam) {
   return { r2_loo: 1 - ssRes / ssTot, n_folds: folds };
 }
 
+// Bayesian sequential update for a single scalar coefficient.
+// Prior: N(mu0, sigma0^2). Likelihood: normal with known noise sigma_n.
+// Returns posterior mean and variance. Used as an informational intercept
+// refinement only; Ridge and LOO CV remain the operative reliability metrics.
+// This lightweight layer is intentionally scalar and closed form.
+// It avoids sampling, avoids extra dependencies, and keeps each update auditable.
+// Residuals are logged in ln-space so the mechanism matches the regression model.
+// The posterior mean is not fed back into compliance scheduling limits.
+function bayesianUpdateNormal(mu0, sigma0Sq, observations, predictions, sigmaNSq) {
+  var postVar = sigma0Sq;
+  var postMean = mu0;
+  for (var i = 0; i < observations.length; i++) {
+    var residual = observations[i] - predictions[i];
+    var denom = postVar + sigmaNSq;
+    postMean = postMean + (postVar / denom) * residual;
+    postVar = (postVar * sigmaNSq) / denom;
+  }
+  return { mean: postMean, variance: postVar, stdDev: Math.sqrt(postVar) };
+}
+
 // VOC calibration: ln(VOC) = a*ln(rawHrs) + b*ambientTemp + c + humidityPenalty.
 // Uses independent carbon charge periods only. P1-P3 are same-carbon cumulative
 // observations and are shown for transparency, not fitted as independent points.
 function calibrateVOC(stackData) {
   const v = stackData.filter(d => d.voc != null && d.activeHrs > 0 && d.sameCarbon !== true);
-  if (v.length < 3) return { a: D_VOC_A, b: D_VOC_B, c: D_VOC_C, r2: null, r2_loo: null, n_folds: 0, rmse: VOC_RMSE_LOG, n: v.length };
+  if (v.length < 3) return { a: D_VOC_A, b: D_VOC_B, c: D_VOC_C, r2: null, r2_loo: null, n_folds: 0, rmse: VOC_RMSE_LOG, n: v.length, bayesC: null, bayesianActive: false };
   const effectiveHours = v.map(d=>calcEffectiveHours(d.activeHrs, d.periodStart, d.periodEnd));
   const fit = ridgeRegression(effectiveHours.map(h=>Math.log(h)), v.map(d=>d.avgTemp), v.map(d=>d.voc), 0.1);
-  if (!fit) return { a: D_VOC_A, b: D_VOC_B, c: D_VOC_C, r2: null, r2_loo: null, n_folds: 0, rmse: VOC_RMSE_LOG, n: v.length };
+  if (!fit) return { a: D_VOC_A, b: D_VOC_B, c: D_VOC_C, r2: null, r2_loo: null, n_folds: 0, rmse: VOC_RMSE_LOG, n: v.length, bayesC: null, bayesianActive: false };
   const resids = v.map(d => {
     const hf = humidityFactor(d.avgRH), hp = (1-hf)*0.6;
     const effectiveHrs = calcEffectiveHours(d.activeHrs, d.periodStart, d.periodEnd);
@@ -358,7 +378,19 @@ function calibrateVOC(stackData) {
   });
   const rmse = Math.sqrt(resids.reduce((a,e)=>a+e*e,0)/resids.length);
   const looResult = looCV(effectiveHours.map(h=>Math.log(Math.max(h, 1))), v.map(d=>d.avgTemp), v.map(d=>d.voc), 0.1);
-  return { a: fit.a, b: fit.b, c: fit.c, r2: fit.r2, r2_loo: looResult ? looResult.r2_loo : null, n_folds: looResult ? looResult.n_folds : 0, rmse, n: v.length };
+  // Bayesian sequential update on intercept c (most uncertain coefficient).
+  // Prior: N(fit.c, (rmse * 1.5)^2). Noise sigma: rmse.
+  const priorSigmaSq = (rmse * 1.5) * (rmse * 1.5);
+  const noiseSigmaSq = rmse * rmse;
+  const lnObserved = v.map(function(d) { return Math.log(d.voc); });
+  const lnPredicted = v.map(function(d) {
+    const hp = (1 - humidityFactor(d.avgRH)) * 0.6;
+    const effectiveHrs = calcEffectiveHours(d.activeHrs, d.periodStart, d.periodEnd);
+    return fit.a * Math.log(effectiveHrs) + fit.b * d.avgTemp + fit.c + hp;
+  });
+  const bayesC = bayesianUpdateNormal(fit.c, priorSigmaSq, lnObserved, lnPredicted, noiseSigmaSq);
+  const bayesianActive = v.length >= 4;
+  return { a: fit.a, b: fit.b, c: fit.c, r2: fit.r2, r2_loo: looResult ? looResult.r2_loo : null, n_folds: looResult ? looResult.n_folds : 0, rmse, n: v.length, bayesC, bayesianActive };
 }
 
 // PAH calibration uses independent fresh-carbon periods only
@@ -378,7 +410,7 @@ function calibratePAH(stackData) {
   const all   = stackData.filter(d => d.pah != null && d.stackTemp != null && d.activeHrs > 0);
   const v = fresh.length >= 3 ? fresh : all;
   if (v.length < 3) {
-    return { a: D_PAH_A, b: D_PAH_B, c: D_PAH_C, r2: null, rmse: PAH_RMSE_LOG, n: v.length, freshOnly: fresh.length >= 3 };
+    return { a: D_PAH_A, b: D_PAH_B, c: D_PAH_C, r2: null, rmse: PAH_RMSE_LOG, n: v.length, freshOnly: fresh.length >= 3, bayesC: null, bayesianActive: false };
   }
   // x1 = stackTemp (dominant), x2 = ln(activeHrs)
   const fit = ridgeRegression(v.map(d=>d.stackTemp), v.map(d=>Math.log(calcEffectiveHours(d.activeHrs, d.periodStart, d.periodEnd))), v.map(d=>d.pah), 0.1);
@@ -392,14 +424,23 @@ function calibratePAH(stackData) {
     let ssr=0,sst=0;
     ys.forEach((y,i)=>{ssr+=(b*xs[i]+c-y)*(b*xs[i]+c-y);sst+=(y-my)*(y-my);});
     const rmse=Math.sqrt(ssr/n);
-    return { a:b, b:0, c, r2:Math.max(0,1-ssr/Math.max(sst,1e-9)), rmse, n:v.length, freshOnly: fresh.length>=3, tempOnly:true };
+    return { a:b, b:0, c, r2:Math.max(0,1-ssr/Math.max(sst,1e-9)), rmse, n:v.length, freshOnly: fresh.length>=3, tempOnly:true, bayesC: null, bayesianActive: false };
   }
   const ssr=v.reduce((s,d,i)=>{
     const yhat=fit.a*d.stackTemp+fit.b*Math.log(calcEffectiveHours(d.activeHrs, d.periodStart, d.periodEnd))+fit.c;
     return s+(yhat-Math.log(d.pah))*(yhat-Math.log(d.pah));
   },0);
   const rmse=Math.sqrt(ssr/v.length);
-  return { a: fit.a, b: fit.b, c: fit.c, r2: fit.r2, rmse, n: v.length, freshOnly: fresh.length>=3 };
+  // Bayesian sequential update on PAH intercept c.
+  const pahPriorSigmaSq = (rmse * 1.5) * (rmse * 1.5);
+  const pahNoiseSigmaSq = rmse * rmse;
+  const pahLnObs = v.map(function(d) { return Math.log(d.pah); });
+  const pahLnPred = v.map(function(d) {
+    return fit.a * d.stackTemp + fit.b * Math.log(calcEffectiveHours(d.activeHrs, d.periodStart, d.periodEnd)) + fit.c;
+  });
+  const pahBayesC = bayesianUpdateNormal(fit.c, pahPriorSigmaSq, pahLnObs, pahLnPred, pahNoiseSigmaSq);
+  const pahBayesianActive = v.length >= 4;
+  return { a: fit.a, b: fit.b, c: fit.c, r2: fit.r2, rmse, n: v.length, freshOnly: fresh.length>=3, bayesC: pahBayesC, bayesianActive: pahBayesianActive };
 }
 
 // predictVOC: uses raw active hours (consistent with calibration at nf=0.53 baseline).
@@ -849,6 +890,9 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
         <div style={{ fontSize:10, fontWeight:700, color:vOk?C.teal:C.amber, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>VOC Model</div>
         <div style={{ fontSize:12, color:C.ink }}>{vOk ? `n=${vocC.n} | In-sample R2: ${vocC.r2.toFixed(3)} | LOO CV R2: ${looLabel}` : `Defaults (n=${vocC.n} - need 3+)`}</div>
         <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>a={vocC.a.toFixed(3)} b={vocC.b.toFixed(3)} c={vocC.c.toFixed(3)} | Uncertainty band: x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)}</div>
+        <div style={{ fontSize:10, color:vocC.bayesianActive?C.teal:C.muted, marginTop:2 }}>
+          Bayes: {vocC.bayesianActive ? "Active" : "Inactive"} | {vocC.bayesianActive ? `delta c=${vocC.bayesC ? (vocC.bayesC.mean - vocC.c).toFixed(3) : "n/a"}` : `n=${vocC.n} of 4 req.`}
+        </div>
         <div style={{ fontSize:10, color:TINT.amberText, marginTop:6, padding:"7px 9px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:6, lineHeight:1.45 }}>
           LOO CV R2 is the leave-one-out cross-validated coefficient of determination. It estimates how well the model predicts periods it was NOT trained on. For compliance scheduling, LOO CV R2 is the more conservative and EA-defensible reliability metric. In-sample R2 is shown for calibration audit trail only. {vocC.r2_loo == null ? "LOO CV requires a minimum of 4 independent calibration periods." : ""}
         </div>
@@ -864,6 +908,9 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
         <div style={{ fontSize:10, fontWeight:700, color:pOk?C.teal:C.amber, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>PAH Model</div>
         <div style={{ fontSize:12, color:C.ink }}>{pOk ? `Live calibrated (n=${pahC.n}, R2=${pahC.r2.toFixed(3)})` : `Defaults (n=${pahC.n} - need 3+)`}</div>
         <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>Bivariate: temp + age. Breach stack temp at 500hrs: {pahFailTemp(500, pahC).toFixed(1)}C (~{(pahFailTemp(500,pahC)-10).toFixed(1)}C ambient)</div>
+        <div style={{ fontSize:10, color:pahC.bayesianActive?C.teal:C.muted, marginTop:2 }}>
+          Bayes: {pahC.bayesianActive ? "Active" : "Inactive"} | {pahC.bayesianActive ? `delta c=${pahC.bayesC ? (pahC.bayesC.mean - pahC.c).toFixed(3) : "n/a"}` : `n=${pahC.n} of 4 req.`}
+        </div>
         <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>
           Calibration: independent fresh-carbon periods only (sameCarbon=false). P2 excluded for calibration symmetry with VOC model. P2 certified result retained in display table only. n={pahC.n} independent periods.
         </div>
@@ -1501,11 +1548,14 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC }) {
   const fitRows = stackData.map(d=>{
     const tOperative = operativeTemp(d.avgTemp, stackTempCorrection);
     const vocPred = d.voc!=null ? predictVOC(d.activeHrs,tOperative,d.avgRH,vocC) : null;
+    const bayesResidual = d.sameCarbon === false && d.voc != null
+      ? Math.log(Math.max(d.voc, 0.01)) - (vocC.a * Math.log(Math.max(calcEffectiveHours(d.activeHrs, d.periodStart, d.periodEnd), 1)) + vocC.b * d.avgTemp + vocC.c + ((1 - humidityFactor(d.avgRH)) * 0.6))
+      : null;
     const st = d.stackTemp!=null ? d.stackTemp : d.avgTemp+10;
     const pahPred = d.pah!=null ? predictPAH(st, d.activeHrs, pahC) : null;
     const vocErr = vocPred&&d.voc ? ((vocPred-d.voc)/d.voc*100) : null;
     const pahErr = pahPred&&d.pah ? ((pahPred-d.pah)/d.pah*100) : null;
-    return {...d, tOperative, vocPred, pahPred, vocErr, pahErr};
+    return {...d, tOperative, vocPred, pahPred, vocErr, pahErr, bayesResidual};
   });
   const highResiduals = fitRows.filter(r=>r.vocErr != null && Math.abs(r.vocErr) > 80);
   const vocCWithoutP2 = calibrateVOC(stackData.filter(d=>d.period !== "P2"));
@@ -1545,7 +1595,7 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC }) {
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
             <thead>
               <tr style={{ borderBottom:`2px solid ${C.border}` }}>
-                {["Period","Hrs","Amb T","T Oper","Stack T","RH","VOC Act","VOC Pred","VOC Err","PAH Act","PAH Pred","PAH Err","Note"].map(h=>(
+                {["Period","Hrs","Amb T","T Oper","Stack T","RH","VOC Act","VOC Pred","VOC Err","Bayes Resid (ln)","PAH Act","PAH Pred","PAH Err","Note"].map(h=>(
                   <th key={h} style={{ textAlign:"left", padding:"5px 7px", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase" }}>{h}</th>
                 ))}
               </tr>
@@ -1566,6 +1616,7 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC }) {
                     <td style={{ padding:"5px 7px", fontFamily:MONO, color:row.voc>VOC_ELV?C.red:C.teal, fontWeight:row.voc>VOC_ELV?700:400 }}>{row.voc!=null?row.voc:"--"}</td>
                     <td style={{ padding:"5px 7px", fontFamily:MONO }}>{row.vocPred!=null?row.vocPred:"--"}</td>
                     <td style={{ padding:"5px 7px", fontFamily:MONO, color:row.vocErr!=null&&Math.abs(row.vocErr)>50?C.amber:C.muted }}>{row.vocErr!=null?(row.vocErr>0?"+":"")+row.vocErr.toFixed(0)+"%":"--"}</td>
+                    <td style={{ padding:"5px 7px", fontFamily:MONO, textAlign:"right", color:row.bayesResidual!=null&&Math.abs(row.bayesResidual)>0.5?C.amber:C.muted }}>{row.bayesResidual!=null?(row.bayesResidual>0?"+":"")+row.bayesResidual.toFixed(3):"--"}</td>
                     <td style={{ padding:"5px 7px", fontFamily:MONO, color:row.pah>PAH_ELV?C.red:C.teal, fontWeight:row.pah>PAH_ELV?700:400 }}>{row.pah!=null?row.pah.toLocaleString():<Badge text="Outstanding" color={C.red} />}</td>
                     <td style={{ padding:"5px 7px", fontFamily:MONO }}>{row.pahPred!=null?row.pahPred.toLocaleString():"--"}</td>
                     <td style={{ padding:"5px 7px", fontFamily:MONO, color:row.pahErr!=null&&Math.abs(row.pahErr)>30?C.amber:C.muted }}>{row.pahErr!=null?(row.pahErr>0?"+":"")+row.pahErr.toFixed(0)+"%":"--"}</td>
@@ -1582,7 +1633,7 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC }) {
                   </tr>
                   {row.flowAnomalous && openAnomaly===row.period && (
                     <tr key={`${row.period}-anomaly`} style={{ borderBottom:`1px solid ${C.border}`, background:TINT.amberBg }}>
-                      <td colSpan={13} style={{ padding:"9px 10px", fontSize:11, color:C.ink, lineHeight:1.55 }}>
+                      <td colSpan={14} style={{ padding:"9px 10px", fontSize:11, color:C.ink, lineHeight:1.55 }}>
                         P2 (March 2025, MCERTS ref ES-2093): Envirocare certified stack discharge flow of 3,659 m3/hr against 7,000-12,000 m3/hr across all other Config A periods. Standard Config A pulleys confirmed installed at time of test. No operational cause identified. Envirocare measurement stands as certified. Raw traverse data not available for retrospective review. Anomaly is formally unresolvable. P2 is excluded from flow-dependent Wheeler-Jonas EBCT calculations and from the stack temperature correction (T_operative) derivation. P2 VOC and PAH certified results are valid and are retained in regression calibration.
                       </td>
                     </tr>
@@ -1595,6 +1646,9 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC }) {
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
           P1-P3: same carbon charge (cumulative -- not independent data points). P4-P8: fresh carbon each period. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses T_operative = ambient + correction factor. PAH model uses MCERTS stack temp.
+        </div>
+        <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>
+          Bayes Resid = ln(measured) - ln(Ridge predicted). Sequential Bayesian update on intercept c uses these residuals as observations. Positive mean residual indicates systematic underprediction; Bayesian posterior will shift intercept upward.
         </div>
       </Card>
 
@@ -2464,7 +2518,27 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.8 }}>
           <strong>VOC:</strong> Calibrated using Ridge L2 bivariate regression (ln(active hrs), ambient temperature). In-sample R2 and leave-one-out cross-validated R2 are both computed and displayed. LOO CV R2 is the operative reliability metric for scheduling decisions - it estimates predictive accuracy on periods not used for fitting. In-sample R2 is retained for audit trail purposes only. ln(VOC) = a*ln(rawActiveHrs) + b*T_operative + c + humidityPenalty. The b coefficient ({vocC.b.toFixed(3)}) was calibrated against ambient temperature (avgTemp from MCERTS records), not T_operative. The +{(settings.stackTempCorrectionC ?? 8).toFixed(1)}C stack temperature correction is applied at prediction time only (T_operative = ambient + correction). This is internally consistent provided the correction factor is constant across all calibration periods, which the +8C interim assumption achieves. If a period-specific correction were used, the model would require recalibration. Deferred until continuous bed-face temperature logging data is available. WJ fraction scales the safeWindowHoursVOC output only - it does not alter the regression prediction input, keeping coefficients consistent with calibration data. The WJ bed life estimate is a theoretical upper bound (Dubinin-Radushkevich/Polanyi steady-state) with no calibrated relationship to observed P1-P8 breakthrough events. It must not be used as a compliance scheduling limit. The VOC regression safe window is the operative limit. Uncertainty band x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} shown on forecast.
           <br /><br />
+          <strong>Bayesian Sequential Updating (VOC Intercept Refinement):</strong>{" "}
+          {vocC.bayesianActive
+            ? <>
+                Active (n={vocC.n} independent periods). The Ridge L2 regression intercept is refined via a conjugate normal-normal Bayesian update treating each MCERTS result as a sequential observation. Prior: N({vocC.c.toFixed(3)}, sigma={(vocC.rmse * 1.5).toFixed(3)}). Posterior intercept mean: {vocC.bayesC ? vocC.bayesC.mean.toFixed(4) : "n/a"} (delta: {vocC.bayesC ? (vocC.bayesC.mean - vocC.c).toFixed(4) : "n/a"}). Posterior std dev: {vocC.bayesC ? vocC.bayesC.stdDev.toFixed(4) : "n/a"}. Slope coefficients (a, b) are unchanged: physically constrained and well-determined by Ridge regression at current n. Bayesian intercept is informational only; Ridge R2 and LOO CV remain the operative reliability metrics for compliance scheduling.
+              </>
+            : <>
+                Inactive - requires 4+ independent calibration periods (sameCarbon=false). Currently n={vocC.n}. Bayesian refinement will activate automatically on next qualifying stack test entry.
+              </>
+          }
+          <br /><br />
           <strong>PAH:</strong> Bivariate model. ln(PAH) = a*stackTemp + b*ln(activeHrs) + c. Fresh-carbon periods only where PAH is available. Hours coefficient constrained positive. R2={pahC.r2!=null?pahC.r2.toFixed(3):"default"}. ELV breach stack temp at 500hrs: {pahFailTemp(500,pahC).toFixed(1)}C; at 1200hrs: {pahFailTemp(1200,pahC).toFixed(1)}C. Temperature dominant; age provides conservative secondary signal.
+          <br /><br />
+          <strong>Bayesian Sequential Updating (PAH Intercept Refinement):</strong>{" "}
+          {pahC.bayesianActive
+            ? <>
+                Active (n={pahC.n} independent periods). The PAH Ridge L2 regression intercept is refined via the same conjugate normal-normal update. Prior: N({pahC.c.toFixed(3)}, sigma={(pahC.rmse * 1.5).toFixed(3)}). Posterior intercept mean: {pahC.bayesC ? pahC.bayesC.mean.toFixed(4) : "n/a"} (delta: {pahC.bayesC ? (pahC.bayesC.mean - pahC.c).toFixed(4) : "n/a"}). Posterior std dev: {pahC.bayesC ? pahC.bayesC.stdDev.toFixed(4) : "n/a"}. Slope coefficients are unchanged and the posterior intercept is supplementary only; PAH R2 and the certified stack-test evidence remain the operative reliability basis.
+              </>
+            : <>
+                Inactive - requires 4+ independent PAH calibration periods. Currently n={pahC.n}. P8 PAH entry remains the highest-value next calibration point.
+              </>
+          }
           <br /><br />
           <strong>Single-component WJ proxy:</strong> Naphthalene is used as a single-component proxy compound for Wheeler-Jonas bed capacity estimation. This is a conservative simplification - no multi-component competitive adsorption model is implemented. The {(settings.naphthaleneFrac*100).toFixed(0)}% vapour-phase fraction is plant-calibrated against P4-P8 MCERTS results.
           <br /><br />
