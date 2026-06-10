@@ -30,7 +30,10 @@
         const response = await fetch('./carbon-predictability-model.jsx?v=1.5.1');
         if (!response.ok) throw new Error('Unable to load app source: ' + response.status);
         let source = await response.text();
-        source = source.replace(/import\s+React[^;]+;\s*/g, '');
+        source = source.replace(/import\s+\{([^}]+)\}\s+from\s+["']react["'];\s*/g, 'const {$1} = React;');
+        source = source.replace(/import\s+React\s*,?\s*\{?([^}]*)\}?\s+from\s+["']react["'];\s*/g, function(_, names) {
+          return names && names.trim() ? 'const {' + names + '} = React;' : '';
+        });
         source = source.replace(/import\s+\{([^}]+)\}\s+from\s+["']recharts["'];\s*/g, 'const {$1} = Recharts;');
         source = source.replace(/export\s+default\s+function\s+App\s*\(/, 'function App(');
         source = source.replace(/export\s+default\s+App\s*;?/, '');
