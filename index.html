@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Carbon Bed Predictability Model</title>
+  <style>
+    html, body, #root { margin: 0; min-height: 100%; }
+    body { background: #080d14; }
+    #root:empty::before {
+      content: "Loading Carbon Bed Predictability Model...";
+      display: block;
+      padding: 24px;
+      color: #d7e3ef;
+      font: 14px system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/react-is@18.3.1/umd/react-is.production.min.js"></script>
+  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.7/babel.min.js"></script>
+  <script>
+    (async function loadApp() {
+      try {
+        const response = await fetch('./carbon-predictability-model.jsx?v=1.5.1');
+        if (!response.ok) throw new Error('Unable to load app source: ' + response.status);
+        let source = await response.text();
+        source = source.replace(/import\s+React[^;]+;\s*/g, '');
+        source = source.replace(/import\s+\{([^}]+)\}\s+from\s+["']recharts["'];\s*/g, 'const {$1} = Recharts;');
+        source = source.replace(/export\s+default\s+function\s+App\s*\(/, 'function App(');
+        source = source.replace(/export\s+default\s+App\s*;?/, '');
+        source += '\nReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));';
+        const compiled = Babel.transform(source, { presets: ['react'] }).code;
+        const script = document.createElement('script');
+        script.textContent = compiled;
+        document.body.appendChild(script);
+      } catch (error) {
+        document.getElementById('root').textContent = error && error.stack ? error.stack : String(error);
+      }
+    })();
+  </script>
+</body>
+</html>
