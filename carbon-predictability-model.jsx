@@ -43,7 +43,7 @@ const TINT = {
 };
 const MONO = "'Consolas', 'Courier New', monospace";
 const MODEL_VERSION = "v1.5.1";
-const MODEL_BUILD_DATE = "2026-06-10";
+const MODEL_BUILD_DATE = "2026-06-11";
 
 // ============================================================
 // CONSTANTS
@@ -60,6 +60,19 @@ const LAT        = 52.9833;
 const LON        = 0.0167;
 const P1_AVG_HRS = 5.85;    // hrs/charge  Plant 1 (blended average, all product types)
 const P2_AVG_HRS = 7.84;    // hrs/charge  Plant 2 (blended average, all product types)
+// Fallback ambient-to-inlet offset for forward forecast temperature projection: +8 deg C.
+const FALLBACK_AMBIENT_TO_INLET_OFFSET_C = 8;
+const PLANT_STATES = ["Impregnating","Draining","Conditioning","Idle","Maintenance","Steaming"];
+const EMPTY_THERMAL_LOG_ENTRY = {
+  id: "",
+  timestamp: "",
+  ambientTemp: "",
+  preBedTemp: "",
+  postBedTemp: "",
+  plant1State: "",
+  plant2State: "",
+  notes: "",
+};
 
 const FAN_SPECIFICATION = {
   manufacturer: "Halifax Fan Ltd",
@@ -565,6 +578,89 @@ function addDays(date, days) {
 
 function daysBetween(startDate, endDate) {
   return Math.max(0, Math.floor((new Date(endDate) - new Date(startDate)) / 86400000));
+}
+
+function nowDateTimeLocal() {
+  const d = new Date();
+  const z = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+
+function formatThermalTimestamp(ts) {
+  if (!ts) return "--";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const z = n => String(n).padStart(2, "0");
+  return `${z(d.getDate())} ${months[d.getMonth()]} ${d.getFullYear()} ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+
+function parseThermalNumber(value) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function thermalDerived(entry) {
+  const ambient = parseThermalNumber(entry.ambientTemp);
+  const preBed = parseThermalNumber(entry.preBedTemp);
+  const postBed = parseThermalNumber(entry.postBedTemp);
+  if (ambient == null || preBed == null || postBed == null) return { ambientToInletDelta:null, exotherm:null };
+  return {
+    ambientToInletDelta: preBed - ambient,
+    exotherm: postBed - preBed,
+  };
+}
+
+function computeThermalStats(thermalLog) {
+  const rows = (thermalLog || []).map(entry => ({...entry, ...thermalDerived(entry)}))
+    .filter(entry => entry.ambientToInletDelta != null && entry.exotherm != null);
+  const count = rows.length;
+  if (count < 1) return { count:0, rows:[], ready:false, meanAmbientToInletDelta:null, stdDevAmbientToInletDelta:null, latestDelta:null, latestAmbientTemp:null, minExotherm:null, maxExotherm:null, commonPlant1:"--", commonPlant2:"--" };
+  const deltas = rows.map(r => r.ambientToInletDelta);
+  const mean = deltas.reduce((sum, val)=>sum+val,0) / count;
+  const variance = deltas.reduce((acc, val) => acc + (val - mean) * (val - mean), 0) / count;
+  const sortedRows = rows.slice().sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  const exotherms = rows.map(r => r.exotherm);
+  const commonState = field => {
+    const counts = {};
+    rows.forEach(r=>{ if (r[field]) counts[r[field]] = (counts[r[field]] || 0) + 1; });
+    const keys = Object.keys(counts).sort((a,b)=>counts[b]-counts[a] || a.localeCompare(b));
+    return keys[0] || "--";
+  };
+  return {
+    count,
+    rows,
+    ready: count >= 3,
+    meanAmbientToInletDelta: mean,
+    stdDevAmbientToInletDelta: Math.sqrt(variance),
+    latestDelta: sortedRows[0] ? sortedRows[0].ambientToInletDelta : null,
+    latestAmbientTemp: sortedRows[0] ? parseThermalNumber(sortedRows[0].ambientTemp) : null,
+    minExotherm: Math.min.apply(null, exotherms),
+    maxExotherm: Math.max.apply(null, exotherms),
+    commonPlant1: commonState("plant1State"),
+    commonPlant2: commonState("plant2State"),
+  };
+}
+
+function thermalDeltaColor(delta) {
+  if (delta == null) return C.muted;
+  if (delta <= 8) return C.teal;
+  if (delta <= 12) return C.amber;
+  return C.red;
+}
+
+function plantStateColor(state) {
+  if (state === "Impregnating") return C.red;
+  if (state === "Draining" || state === "Steaming") return C.amber;
+  if (state === "Conditioning") return C.gold;
+  if (state === "Idle") return C.rund;
+  if (state === "Maintenance") return C.muted;
+  return C.muted;
+}
+
+function csvEscape(value) {
+  const s = value == null ? "" : String(value);
+  return `"${s.replace(/"/g, '""')}"`;
 }
 
 function pahLimitHoursForOperativeTemp(tOperative) {
@@ -2012,7 +2108,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
 // ============================================================
 // FORWARD FORECAST TAB
 // ============================================================
-function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChangeoutDateChange, vocC, pahC }) {
+function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChangeoutDateChange, vocC, pahC, thermalStats }) {
   const today = useMemo(()=>new Date(),[]);
   const [mode, setMode] = useState("seasonal");
   const [flatTemp, setFlatTemp] = useState(settings.typicalTempC);
@@ -2021,9 +2117,12 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
   const [pahTempOverride, setPahTempOverride] = useState("");
   const [liveTemps, setLiveTemps] = useState(null);
   const [liveStatus, setLiveStatus] = useState("");
+  const [useSiteMeasuredOffset, setUseSiteMeasuredOffset] = useState(false);
 
   const utilisationPct = Math.round((settings.utilisationRate || 0.82) * 1000) / 10;
-  const stackTempCorrection = settings.stackTempCorrectionC ?? 8;
+  const fallbackAmbientToInletOffset = settings.stackTempCorrectionC ?? FALLBACK_AMBIENT_TO_INLET_OFFSET_C;
+  const thermalOffsetReady = thermalStats && thermalStats.ready;
+  const activeAmbientToInletOffset = thermalOffsetReady && useSiteMeasuredOffset ? thermalStats.meanAmbientToInletDelta : fallbackAmbientToInletOffset;
   const preTestBufferDays = settings.preTestBufferDays ?? 14;
   const preTestBufferActiveHrs = settings.preTestBufferActiveHrs ?? 150;
   const autoActiveHrs = Math.max(0, Math.round(daysBetween(lastChangeout, today) * 24 * (utilisationPct / 100)));
@@ -2052,6 +2151,10 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
       });
   },[mode, liveTemps]);
 
+  useEffect(()=>{
+    if (!thermalOffsetReady && useSiteMeasuredOffset) setUseSiteMeasuredOffset(false);
+  },[thermalOffsetReady, useSiteMeasuredOffset]);
+
   const forecast = useMemo(()=>buildForwardForecast({
     startDate: today,
     startActiveHrs,
@@ -2060,7 +2163,7 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
     flatTemp,
     monthlyTemps,
     liveTemps,
-    correctionFactor: stackTempCorrection,
+    correctionFactor: activeAmbientToInletOffset,
     pahStackTempOverride: pahTempOverride,
     isSameCarbonCharge: !!settings.isSameCarbonCharge,
     vocC,
@@ -2068,7 +2171,7 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
     maxDays: 365,
     settings,
     forecastRH: settings.useConservativeRH ? 90 : 80,
-  }),[today,startActiveHrs,utilisationPct,mode,flatTemp,monthlyTemps,liveTemps,stackTempCorrection,pahTempOverride,vocC,pahC,settings]);
+  }),[today,startActiveHrs,utilisationPct,mode,flatTemp,monthlyTemps,liveTemps,activeAmbientToInletOffset,pahTempOverride,vocC,pahC,settings]);
 
   const binding = (() => {
     const sameBedActive = settings.isSameCarbonCharge && forecast.sameBedLimit;
@@ -2162,7 +2265,7 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
       "",
       `TEMPERATURE SCENARIO: ${mode}`,
       `Utilisation rate assumed: ${utilisationPct}%`,
-      `Stack temp correction: +${stackTempCorrection}C`,
+      `Active ambient-to-inlet offset: +${activeAmbientToInletOffset.toFixed(1)}C`,
       "",
       "UNCERTAINTY NOTE",
       `Model calibrated on ${vocC.n} independent stack test periods.`,
@@ -2203,7 +2306,7 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
                 startActiveHrs,
                 operativeTemp(
                   getScenarioAmbientTemp(0, today, mode, flatTemp, monthlyTemps, liveTemps),
-                  settings.stackTempCorrectionC ?? 8
+                  activeAmbientToInletOffset
                 ),
                 settings.useConservativeRH ? 90 : 80,
                 vocC
@@ -2237,6 +2340,25 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
           </div>
         )}
         {mode==="live" && <div style={{ marginTop:10, padding:"9px 12px", borderRadius:7, background:(liveTemps&&liveTemps.length)?TINT.safeBg:TINT.amberBg, color:(liveTemps&&liveTemps.length)?TINT.safeText:TINT.amberText, fontSize:12, fontWeight:600 }}>{liveStatus || "Live mode uses Open-Meteo days 1-7, then seasonal climatology."}</div>}
+        <div style={{ marginTop:12, padding:"10px 12px", borderRadius:7, background:C.ivory, border:`1px solid ${C.border}`, fontSize:12, color:C.ink, lineHeight:1.55 }}>
+          <label style={{ display:"flex", gap:8, alignItems:"center", fontWeight:700, color:thermalOffsetReady?C.ink:C.muted }}>
+            <input
+              type="checkbox"
+              disabled={!thermalOffsetReady}
+              checked={thermalOffsetReady && useSiteMeasuredOffset}
+              onChange={e=>setUseSiteMeasuredOffset(e.target.checked)}
+            />
+            Use site-measured Delta T offset (n={thermalStats ? thermalStats.count : 0} readings)
+          </label>
+          <div style={{ marginTop:6, color:C.muted }}>
+            Active ambient-to-inlet offset: {activeAmbientToInletOffset.toFixed(1)} degrees C
+          </div>
+          {!thermalOffsetReady && (
+            <div style={{ marginTop:4, color:C.muted }}>
+              Site-measured offset activates after 3 thermal readings. Fallback constant: {fallbackAmbientToInletOffset.toFixed(1)} degrees C.
+            </div>
+          )}
+        </div>
       </Card>
 
       <Card>
@@ -2330,7 +2452,7 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
       <Card>
         <SectionTitle>Assumptions and Limitations</SectionTitle>
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.7 }}>
-          This forecast is derived from a multivariate VOC regression model calibrated against independent stack test periods (R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"}). PAH breach dates use the calibrated predictPAH model. Predictions should be treated as risk-informed planning estimates, not guaranteed changeout intervals. Model accuracy will improve as additional stack test periods are calibrated. Stack temperature correction of +{stackTempCorrection.toFixed(1)}C applied to all ambient inputs (configurable in Settings). This tool supports but does not replace MCERTS-certified stack testing as the primary compliance verification method. Anchor scaling from a current VOC reading has been removed: a proportional residual at the current hours count cannot be assumed to hold across the forecast horizon under a log-linear model structure, and the bias was most severe at high residual periods such as P8 (63.9 mg/m3 actual, 3.2x ELV). The unanchored regression prediction is used throughout.
+          This forecast is derived from a multivariate VOC regression model calibrated against independent stack test periods (R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"}). PAH breach dates use the calibrated predictPAH model. Predictions should be treated as risk-informed planning estimates, not guaranteed changeout intervals. Model accuracy will improve as additional stack test periods are calibrated. Active ambient-to-inlet offset of +{activeAmbientToInletOffset.toFixed(1)}C applied to all ambient inputs. This tool supports but does not replace MCERTS-certified stack testing as the primary compliance verification method. Anchor scaling from a current VOC reading has been removed: a proportional residual at the current hours count cannot be assumed to hold across the forecast horizon under a log-linear model structure, and the bias was most severe at high residual periods such as P8 (63.9 mg/m3 actual, 3.2x ELV). The unanchored regression prediction is used throughout.
         </div>
         <div style={{ marginTop:10, padding:"10px 14px", background:settings.useConservativeRH?TINT.safeBg:TINT.amberBg, border:`1px solid ${settings.useConservativeRH?C.teal:C.amber}`, borderRadius:7, color:settings.useConservativeRH?TINT.safeText:TINT.amberText, fontSize:11, lineHeight:1.55, fontWeight:700 }}>
           Humidity assumption: {settings.useConservativeRH ? "Conservative mode ON - 90% RH applied to all forecast periods. BAT-aligned for Boston, Lincolnshire." : "Conservative mode OFF - 80% RH average applied. For compliance scheduling, enable Conservative Humidity Mode in Settings."}
@@ -2378,7 +2500,150 @@ function BATComplianceTab({ settings, onChange }) {
   );
 }
 
-function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange, vocC, pahC }) {
+function ThermalStateBadge({ state }) {
+  const color = plantStateColor(state);
+  return <span style={{ display:"inline-block", background:color, color:"#ffffff", borderRadius:2, fontSize:9, fontWeight:800, letterSpacing:"0.06em", padding:"3px 7px", textTransform:"uppercase", fontFamily:MONO }}>{state || "--"}</span>;
+}
+
+function ThermalMonitoringLogSection({ thermalLog, thermalStats, onAdd, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [expandedNote, setExpandedNote] = useState(null);
+  const [dismissThermalRisk, setDismissThermalRisk] = useState(false);
+  const [form, setForm] = useState({...EMPTY_THERMAL_LOG_ENTRY, timestamp:nowDateTimeLocal(), plant1State:"Idle", plant2State:"Idle"});
+  const [errors, setErrors] = useState({});
+  const sortedEntries = (thermalLog || []).slice().sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  const warningActive = thermalStats.ready && thermalStats.latestAmbientTemp > 18 && thermalStats.meanAmbientToInletDelta > 9;
+
+  const updateForm = (key, value) => {
+    setForm(prev=>({...prev, [key]:value}));
+    setErrors(prev=>({...prev, [key]:""}));
+  };
+  const validate = () => {
+    const nextErrors = {};
+    const ambient = parseThermalNumber(form.ambientTemp);
+    const preBed = parseThermalNumber(form.preBedTemp);
+    const postBed = parseThermalNumber(form.postBedTemp);
+    if (!form.timestamp) nextErrors.timestamp = "Required.";
+    if (ambient == null || ambient < -10 || ambient > 50) nextErrors.ambientTemp = "Required, -10 to 50.";
+    if (preBed == null || preBed < 0 || preBed > 80) nextErrors.preBedTemp = "Required, 0 to 80.";
+    if (postBed == null || postBed < 0 || postBed > 80) nextErrors.postBedTemp = "Required, 0 to 80.";
+    if (!form.plant1State) nextErrors.plant1State = "Required.";
+    if (!form.plant2State) nextErrors.plant2State = "Required.";
+    if (String(form.notes || "").length > 300) nextErrors.notes = "Maximum 300 characters.";
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+  const handleSubmit = () => {
+    if (!validate()) return;
+    onAdd({
+      id: `thermal-${Date.now()}`,
+      timestamp: form.timestamp,
+      ambientTemp: parseThermalNumber(form.ambientTemp),
+      preBedTemp: parseThermalNumber(form.preBedTemp),
+      postBedTemp: parseThermalNumber(form.postBedTemp),
+      plant1State: form.plant1State,
+      plant2State: form.plant2State,
+      notes: String(form.notes || "").slice(0, 300),
+    });
+    setDismissThermalRisk(false);
+    setForm({...EMPTY_THERMAL_LOG_ENTRY, timestamp:nowDateTimeLocal(), plant1State:form.plant1State, plant2State:form.plant2State});
+    setErrors({});
+  };
+  const exportThermalCsv = () => {
+    const headers = ["thermalLog_timestamp","thermalLog_ambientTemp","thermalLog_preBedTemp","thermalLog_postBedTemp","thermalLog_ambToInletDelta","thermalLog_exotherm","thermalLog_plant1State","thermalLog_plant2State","thermalLog_notes"];
+    const rows = sortedEntries.length ? sortedEntries.map(entry => {
+      const derived = thermalDerived(entry);
+      return [
+        entry.timestamp,
+        entry.ambientTemp,
+        entry.preBedTemp,
+        entry.postBedTemp,
+        derived.ambientToInletDelta != null ? derived.ambientToInletDelta.toFixed(2) : "",
+        derived.exotherm != null ? derived.exotherm.toFixed(2) : "",
+        entry.plant1State,
+        entry.plant2State,
+        entry.notes,
+      ].map(csvEscape).join(",");
+    }) : [headers.map(()=>csvEscape("")).join(",")];
+    const csv = [headers.join(","), ...rows].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type:"text/csv" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `thermal-log-${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url);
+  };
+  const fieldLabel = { display:"block", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5 };
+  const fieldBase = { width:"100%", height:38, padding:"8px 10px", border:`1px solid ${C.border}`, borderRadius:7, background:C.surface, color:C.ink, boxSizing:"border-box" };
+  const errorText = key => errors[key] ? <div style={{ fontSize:10, color:C.red, marginTop:3 }}>{errors[key]}</div> : null;
+
+  return (
+    <div style={{ marginTop:14, border:`1px solid ${C.border}`, borderRadius:8, background:C.ivory }}>
+      <button onClick={()=>setOpen(!open)} style={{ width:"100%", textAlign:"left", padding:"11px 14px", border:"none", background:"transparent", color:C.ink, fontWeight:800, fontSize:12, letterSpacing:"0.08em", textTransform:"uppercase", cursor:"pointer" }}>
+        Thermal Monitoring Log {open ? "-" : "+"}
+      </button>
+      {open && (
+        <div style={{ padding:"0 14px 14px" }}>
+          {warningActive && !dismissThermalRisk && (
+            <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"flex-start", marginBottom:12, padding:"10px 12px", border:`1px solid ${C.amber}`, background:TINT.amberBg, color:TINT.amberText, borderRadius:7, fontSize:12, fontWeight:700, lineHeight:1.45 }}>
+              <span>Elevated Thermal Risk - Ambient temperature and duct heat gain indicate bed inlet conditions may approach PAH-sensitive range. Review forward forecast PAH pathway before next scheduled stack test.</span>
+              <button onClick={()=>setDismissThermalRisk(true)} style={{ border:"none", background:"transparent", color:TINT.amberText, cursor:"pointer", fontWeight:900 }}>x</button>
+            </div>
+          )}
+          <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
+            Testo 925 Type K spot readings. Accuracy +/- 0.5 degrees C. Log instantaneous ambient, pre-bed inlet, post-bed outlet, and concurrent plant state.
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(190px, 1fr))", gap:10, alignItems:"start" }}>
+            <div><label style={fieldLabel}>Date and Time</label><input type="datetime-local" value={form.timestamp} onChange={e=>updateForm("timestamp",e.target.value)} style={fieldBase} />{errorText("timestamp")}</div>
+            <div><label style={fieldLabel}>Ambient Temp (degrees C)</label><input type="number" step="0.1" min="-10" max="50" value={form.ambientTemp} onChange={e=>updateForm("ambientTemp",e.target.value)} style={fieldBase} />{errorText("ambientTemp")}</div>
+            <div><label style={fieldLabel}>Pre-Bed Inlet Temp (degrees C)</label><input type="number" step="0.1" min="0" max="80" value={form.preBedTemp} onChange={e=>updateForm("preBedTemp",e.target.value)} style={fieldBase} />{errorText("preBedTemp")}</div>
+            <div><label style={fieldLabel}>Post-Bed Outlet Temp (degrees C)</label><input type="number" step="0.1" min="0" max="80" value={form.postBedTemp} onChange={e=>updateForm("postBedTemp",e.target.value)} style={fieldBase} />{errorText("postBedTemp")}</div>
+            <div><label style={fieldLabel}>Plant 1 State</label><select value={form.plant1State} onChange={e=>updateForm("plant1State",e.target.value)} style={fieldBase}><option value="">Select</option>{PLANT_STATES.map(s=><option key={s} value={s}>{s}</option>)}</select>{errorText("plant1State")}</div>
+            <div><label style={fieldLabel}>Plant 2 State</label><select value={form.plant2State} onChange={e=>updateForm("plant2State",e.target.value)} style={fieldBase}><option value="">Select</option>{PLANT_STATES.map(s=><option key={s} value={s}>{s}</option>)}</select>{errorText("plant2State")}</div>
+            <div style={{ gridColumn:"1 / -1" }}><label style={fieldLabel}>Operator Notes</label><textarea maxLength={300} value={form.notes} onChange={e=>updateForm("notes",e.target.value)} style={{ ...fieldBase, minHeight:68, height:"auto", resize:"vertical" }} />{errorText("notes")}</div>
+          </div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:10 }}>
+            <Btn onClick={handleSubmit} variant="rund" small>Add Thermal Reading</Btn>
+            <Btn onClick={exportThermalCsv} variant="ghost" small>Export thermal CSV</Btn>
+          </div>
+          {thermalStats.ready && (
+            <div style={{ marginTop:12, padding:"10px 12px", background:TINT.blueBg, border:`1px solid ${C.blue}`, borderRadius:7, fontSize:12, color:TINT.blueText, lineHeight:1.6 }}>
+              <strong>Site Thermal Transfer Profile</strong><br />
+              Mean Ambient to Inlet Delta T: {thermalStats.meanAmbientToInletDelta.toFixed(1)} degrees C (+/- {thermalStats.stdDevAmbientToInletDelta.toFixed(1)} degrees C, n={thermalStats.count})<br />
+              Latest Delta T: {thermalStats.latestDelta.toFixed(1)} degrees C<br />
+              Exotherm Range: {thermalStats.minExotherm.toFixed(1)} to {thermalStats.maxExotherm.toFixed(1)} degrees C across all entries<br />
+              Most Common P1 State: {thermalStats.commonPlant1}<br />
+              Most Common P2 State: {thermalStats.commonPlant2}
+            </div>
+          )}
+          <div style={{ overflowX:"auto", marginTop:12 }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+              <thead><tr>{["Date / Time","Ambient","Pre-Bed","Post-Bed","Amb to Inlet Delta T","Exotherm","P1 State","P2 State","Notes","Delete"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 7px", color:C.muted, fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
+              <tbody>{sortedEntries.map(entry=>{
+                const derived = thermalDerived(entry);
+                const noteText = String(entry.notes || "");
+                const isExpanded = expandedNote === entry.id;
+                return (
+                  <tr key={entry.id} style={{ borderBottom:`1px solid ${C.border}`, background:C.surface }}>
+                    <td style={{ padding:"6px 7px", fontFamily:MONO }}>{formatThermalTimestamp(entry.timestamp)}</td>
+                    <td style={{ padding:"6px 7px", fontFamily:MONO }}>{parseThermalNumber(entry.ambientTemp)?.toFixed(1)} deg C</td>
+                    <td style={{ padding:"6px 7px", fontFamily:MONO }}>{parseThermalNumber(entry.preBedTemp)?.toFixed(1)} deg C</td>
+                    <td style={{ padding:"6px 7px", fontFamily:MONO }}>{parseThermalNumber(entry.postBedTemp)?.toFixed(1)} deg C</td>
+                    <td style={{ padding:"6px 7px", fontFamily:MONO, color:thermalDeltaColor(derived.ambientToInletDelta), fontWeight:700 }}>{derived.ambientToInletDelta!=null?derived.ambientToInletDelta.toFixed(1):"--"} deg C</td>
+                    <td style={{ padding:"6px 7px", fontFamily:MONO, color:derived.exotherm!=null&&derived.exotherm<0?C.amber:C.muted }}>{derived.exotherm!=null?(derived.exotherm>0?"+":"")+derived.exotherm.toFixed(1):"--"} deg C</td>
+                    <td style={{ padding:"6px 7px" }}><ThermalStateBadge state={entry.plant1State} /></td>
+                    <td style={{ padding:"6px 7px" }}><ThermalStateBadge state={entry.plant2State} /></td>
+                    <td style={{ padding:"6px 7px", maxWidth:220, cursor:noteText.length>40?"pointer":"default" }} onClick={()=>noteText.length>40&&setExpandedNote(isExpanded?null:entry.id)}>{isExpanded ? noteText : noteText.length>40 ? noteText.slice(0,40)+"..." : noteText}</td>
+                    <td style={{ padding:"6px 7px" }}><button title="Delete thermal reading" onClick={()=>{ if(window.confirm("Delete this thermal log entry?")) onDelete(entry.id); }} style={{ border:`1px solid ${C.red}`, color:C.red, background:C.surface, borderRadius:4, cursor:"pointer", fontWeight:900 }}>x</button></td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange, vocC, pahC, thermalLog, thermalStats, onAddThermalEntry, onDeleteThermalEntry }) {
   const [openFanNote, setOpenFanNote] = useState(null);
   const specRows = [
     ["Manufacturer", FAN_SPECIFICATION.manufacturer],
@@ -2552,7 +2817,7 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
         <SectionTitle>Data Management</SectionTitle>
         <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
           <Btn onClick={()=>{
-            const keys=["cgb_chargeLog","cgb_coaData","cgb_settings","cgb_lastChangeout","cgb_stackDataExtra","cgb_downtimeHrs","cgb_fanHrs"];
+            const keys=["cgb_chargeLog","cgb_coaData","cgb_settings","cgb_lastChangeout","cgb_stackDataExtra","cgb_downtimeHrs","cgb_fanHrs","cgb_thermalLog"];
             const payload={ exportedAt:new Date().toISOString(), modelVersion:MODEL_VERSION, modelBuildDate:MODEL_BUILD_DATE, backupSchema:"cgb-localstorage-v1" };
             keys.forEach(k=>{ payload[k]=JSON.parse(localStorage.getItem(k)||"null"); });
             const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}));
@@ -2567,8 +2832,9 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
               reader.readAsText(file);
             }} />
           </label>
-          <Btn onClick={()=>{ if(window.confirm("This will delete all charge log entries, CoA records, and settings overrides. The P1-P8 seed data will be restored. Confirm?")){ ["cgb_chargeLog","cgb_coaData","cgb_settings","cgb_lastChangeout","cgb_stackDataExtra","cgb_downtimeHrs","cgb_fanHrs"].forEach(k=>localStorage.removeItem(k)); window.location.reload(); } }} variant="danger">Clear all data</Btn>
+          <Btn onClick={()=>{ if(window.confirm("This will delete all charge log entries, CoA records, thermal log entries, and settings overrides. The P1-P8 seed data will be restored. Confirm?")){ ["cgb_chargeLog","cgb_coaData","cgb_settings","cgb_lastChangeout","cgb_stackDataExtra","cgb_downtimeHrs","cgb_fanHrs","cgb_thermalLog"].forEach(k=>localStorage.removeItem(k)); window.location.reload(); } }} variant="danger">Clear all data</Btn>
         </div>
+        <ThermalMonitoringLogSection thermalLog={thermalLog} thermalStats={thermalStats} onAdd={onAddThermalEntry} onDelete={onDeleteThermalEntry} />
         <div style={{ fontSize:11, color:C.muted, marginTop:10, lineHeight:1.6 }}>
           Go-live backup note: this export contains all app-entered and PDF-extracted records held in browser storage, plus model version metadata. Uploaded PDFs are parsed for extraction but are not stored by this app; keep original MCERTS stack test PDFs and Koppers CoA PDFs in a controlled document store, and export this JSON backup after every operational update.
         </div>
@@ -2597,6 +2863,7 @@ export default function App() {
   const [lastChangeout, setLastChangeout] = useLocalStorage("cgb_lastChangeout", "2026-03-20", markSaved);
   const [downtimeHrs, setDowntimeHrs]   = useLocalStorage("cgb_downtimeHrs", 0, markSaved);
   const [fanHrs, setFanHrs]             = useLocalStorage("cgb_fanHrs", 0, markSaved);
+  const [thermalLog, setThermalLog]     = useLocalStorage("cgb_thermalLog", [], markSaved);
 
   const [settings, setSettings] = useLocalStorage("cgb_settings", {
     bedMass:6000, flowM3hr:9000, crossSectionM2:DEFAULT_CROSS_SECTION_M2, naphthaleneFrac:0.53,
@@ -2621,6 +2888,7 @@ export default function App() {
   const appAmbientTemp = weather ? weather.temperature_2m : settings.typicalTempC;
   const appRH = settings.useConservativeRH ? 90 : (weather ? weather.relative_humidity_2m : settings.typicalRH);
   const appOperativeTemp = operativeTemp(appAmbientTemp, settings.stackTempCorrectionC ?? 8);
+  const thermalStats = useMemo(()=>computeThermalStats(thermalLog), [thermalLog]);
 
   useEffect(()=>{
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m&timezone=Europe%2FLondon`)
@@ -2672,11 +2940,11 @@ export default function App() {
         {activeTab==="dashboard"    && <DashboardTab    stackData={stackData} settings={settings} weather={weather} chargeLog={chargeLog} fanHrs={fanHrs} lastChangeout={lastChangeout} downtimeHrs={downtimeHrs} onDowntime={setDowntimeHrs} onFanHrs={setFanHrs} vocC={vocC} pahC={pahC} />}
         {activeTab==="cycles"       && <ChargeCyclesTab chargeLog={chargeLog} onAddCharge={c=>setChargeLog(l=>[...l,c])} onDeleteCharge={id=>setChargeLog(l=>l.filter(c=>c.id!==id))} lastChangeout={lastChangeout} settings={settings} vocC={vocC} />}
         {activeTab==="stack"        && <StackTestsTab   stackData={stackData} onAdd={e=>setStackDataExtra(d=>[...d,e])} settings={settings} vocC={vocC} pahC={pahC} />}
-        {activeTab==="forecast"     && <ForwardForecastTab settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} />}
+        {activeTab==="forecast"     && <ForwardForecastTab settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} />}
         {activeTab==="coa"          && <CoATab coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} />}
         {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} />}
         {activeTab==="bat"          && <BATComplianceTab settings={settings} onChange={updateSetting} />}
-        {activeTab==="settings"     && <SettingsTab     settings={settings} onChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} />}
+        {activeTab==="settings"     && <SettingsTab     settings={settings} onChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalLog={thermalLog} thermalStats={thermalStats} onAddThermalEntry={entry=>setThermalLog(list=>[...list, entry])} onDeleteThermalEntry={id=>setThermalLog(list=>list.filter(entry=>entry.id!==id))} />}
 
         <div style={{ background:C.header, borderTop:"1px solid #4a6080", padding:"12px 20px", textAlign:"center" }}>
           <div style={{ fontSize:9, color:"#8fa3ba", letterSpacing:"0.1em", textTransform:"uppercase" }}>CALDERS &amp; GRANDIDGE (BOSTON) LTD | EST. 1896 | BOSTON, LINCOLNSHIRE PE21 7HJ</div>
