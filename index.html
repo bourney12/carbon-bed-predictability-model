@@ -27,7 +27,7 @@
   <script>
     (async function loadApp() {
       try {
-        const response = await fetch('./carbon-predictability-model.jsx?v=1.5.1-bayes');
+        const response = await fetch('./carbon-predictability-model.jsx?v=1.5.1-thermal-log');
         if (!response.ok) throw new Error('Unable to load app source: ' + response.status);
         let source = await response.text();
         source = source.replace(/import\s+\{([^}]+)\}\s+from\s+["']react["'];\s*/g, 'const {$1} = React;');
