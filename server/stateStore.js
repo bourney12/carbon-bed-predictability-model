@@ -58,6 +58,8 @@ function normalizeChargeType(type) {
   const raw = String(type || "").toLowerCase();
   if (["plant1", "p1", "fencing", "fence"].includes(raw)) return "plant1";
   if (["plant2", "p2", "poles", "pole"].includes(raw)) return "plant2";
+  if (raw === "1") return "plant1";
+  if (raw === "2") return "plant2";
   return "";
 }
 
@@ -546,6 +548,69 @@ export class PlatformStateStore {
     } else {
       await this.flush("charge-import-scan");
     }
+    return this.getPublicState();
+  }
+
+  async importChargeRows(rows, actor = null, source = "mdb-sync") {
+    const charges = this.envelope.imports.charges;
+    charges.lastRunAt = new Date().toISOString();
+    const existing = new Map((this.envelope.state.cgb_chargeLog || []).map(entry => [String(entry.id), entry]));
+    const nextLog = [];
+    const touched = new Set();
+    let inserted = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const rawRow of Array.isArray(rows) ? rows : []) {
+      const sourceId = rawRow && rawRow.id != null ? String(rawRow.id) : "";
+      const type = normalizeChargeType(rawRow && rawRow.type != null ? rawRow.type : rawRow && rawRow.plant != null ? rawRow.plant : "");
+      const date = String(rawRow && rawRow.date ? rawRow.date : "");
+      const durationHrs = rawRow && rawRow.durationHrs != null ? Number(rawRow.durationHrs) : null;
+      const count = rawRow && rawRow.count != null ? Math.max(1, parseInt(rawRow.count, 10) || 1) : 1;
+      if (!sourceId || !type || !date || !Number.isFinite(durationHrs) || durationHrs <= 0) {
+        skipped += 1;
+        continue;
+      }
+      const normalized = {
+        id: sourceId,
+        date,
+        type,
+        count,
+        durationHrs: Math.round(durationHrs * 100) / 100,
+        notes: rawRow && rawRow.notes ? String(rawRow.notes) : "",
+        source,
+        importTag: rawRow && rawRow.importTag ? String(rawRow.importTag) : source,
+      };
+      const previous = existing.get(sourceId);
+      if (previous) {
+        const changed = JSON.stringify(previous) !== JSON.stringify({ ...previous, ...normalized });
+        nextLog.push(changed ? { ...previous, ...normalized } : previous);
+        updated += changed ? 1 : 0;
+      } else {
+        nextLog.push(normalized);
+        inserted += 1;
+      }
+      touched.add(sourceId);
+    }
+
+    for (const entry of this.envelope.state.cgb_chargeLog || []) {
+      if (!touched.has(String(entry.id))) nextLog.push(entry);
+    }
+
+    nextLog.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) || String(a.id).localeCompare(String(b.id)));
+    this.envelope.state.cgb_chargeLog = nextLog;
+    charges.lastImportedAt = new Date().toISOString();
+    charges.lastFile = source;
+    charges.lastError = skipped > 0 ? `Skipped ${skipped} incomplete/invalid charge rows.` : "";
+    charges.lastSummary = `MDB sync applied: ${inserted} inserted, ${updated} updated, ${skipped} skipped.`;
+    this.addAudit("charge-import-mdb-sync", actor, {
+      source,
+      inserted,
+      updated,
+      skipped,
+      rowCount: Array.isArray(rows) ? rows.length : 0,
+    });
+    await this.persist(this.envelope.state, source);
     return this.getPublicState();
   }
 

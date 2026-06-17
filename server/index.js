@@ -11,6 +11,7 @@ const PORT = parseInt(process.env.PORT || "8787", 10);
 const HOST = process.env.HOST || "0.0.0.0";
 const ANTHROPIC_API_KEY = process.env.CARBON_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "";
 const ANTHROPIC_MODEL = process.env.CARBON_ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+const IMPORT_API_KEY = process.env.CARBON_IMPORT_API_KEY || "";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -100,6 +101,11 @@ function getUserFromRequest(req) {
   const token = getBearerToken(req);
   const user = store.getUserBySessionToken(token);
   return { token, user };
+}
+
+function hasImportApiAccess(req) {
+  const header = String(req.headers["x-import-api-key"] || "").trim();
+  return !!IMPORT_API_KEY && header === IMPORT_API_KEY;
 }
 
 function parseModelJson(text) {
@@ -303,6 +309,13 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/imports/charges/run" && req.method === "POST") {
       assertRole(user, ["admin", "operator"]);
       const next = await store.processChargeImports(user);
+      return sendJson(res, 200, next);
+    }
+
+    if (url.pathname === "/api/imports/charges/mdb-sync" && req.method === "POST") {
+      if (!hasImportApiAccess(req)) return sendJson(res, 401, { error: "Valid import API key required" });
+      const body = await readJsonBody(req);
+      const next = await store.importChargeRows(body && body.rows ? body.rows : [], null, "mdb-sync");
       return sendJson(res, 200, next);
     }
 
