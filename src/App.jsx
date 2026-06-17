@@ -554,6 +554,15 @@ function normalizeChargeType(type) {
   return "";
 }
 
+function filterChargeLogSince(chargeLog, startDate) {
+  const startMs = new Date(startDate).getTime();
+  if (!Number.isFinite(startMs)) return chargeLog || [];
+  return (chargeLog || []).filter(entry => {
+    const entryMs = new Date(entry.date).getTime();
+    return Number.isFinite(entryMs) && entryMs >= startMs;
+  });
+}
+
 // Rolling charge rate from last N days of log
 function rollingChargeRate(chargeLog, days) {
   const cutoff = new Date();
@@ -1395,12 +1404,13 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
 function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastChangeout, downtimeHrs, onDowntime, onFanHrs, vocC, pahC, canEdit }) {
   const [dismissPahWarning, setDismissPahWarning] = useState(false);
   const [showWeighting, setShowWeighting] = useState(false);
-  const logChargeHrs = useMemo(()=>calcActiveHrsFromLog(chargeLog),[chargeLog]);
+  const currentPeriodChargeLog = useMemo(()=>filterChargeLogSince(chargeLog, lastChangeout), [chargeLog, lastChangeout]);
+  const logChargeHrs = useMemo(()=>calcActiveHrsFromLog(currentPeriodChargeLog),[currentPeriodChargeLog]);
   const now = new Date(), changeoutDate = new Date(lastChangeout);
   const daysSince = Math.max(0, Math.floor((now-changeoutDate)/86400000));
   const fallbackHrs = Math.max(0, Math.round(daysSince*24*settings.utilisationRate - downtimeHrs));
   // Active hours: charge log primary, fallback on days*util
-  const chargeActiveHrs = chargeLog.length > 0 ? Math.max(logChargeHrs - downtimeHrs, 0) : fallbackHrs;
+  const chargeActiveHrs = currentPeriodChargeLog.length > 0 ? Math.max(logChargeHrs - downtimeHrs, 0) : fallbackHrs;
   // Fan hours: bed exposure time even between charges (24/7 minus downtime)
   const fanActiveHrs = fanHrs > 0 ? fanHrs - downtimeHrs : daysSince*24 - downtimeHrs;
   // Prediction uses charge hours (loading proxy) but fan hours shown for reference
@@ -1434,8 +1444,8 @@ function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastCha
   const remainDays  = Math.round(remainHrs / (24*settings.utilisationRate));
 
   // Cycles remaining: remaining hrs / avg hrs per charge from rolling rate
-  const plant1Count = chargeLog.filter(c=>normalizeChargeType(c.type)==="plant1").reduce((a,c)=>a+(c.count||1),0);
-  const plant2Count = chargeLog.filter(c=>normalizeChargeType(c.type)==="plant2").reduce((a,c)=>a+(c.count||1),0);
+  const plant1Count = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant1").reduce((a,c)=>a+(c.count||1),0);
+  const plant2Count = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant2").reduce((a,c)=>a+(c.count||1),0);
   const totalCharges = plant1Count + plant2Count;
   const avgHrsPerCharge = totalCharges > 0
     ? logChargeHrs / totalCharges
@@ -1443,7 +1453,7 @@ function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastCha
   const chargesRemaining = remainHrs > 0 && avgHrsPerCharge > 0
     ? Math.floor(remainHrs / avgHrsPerCharge)
     : 0;
-  const chargeRatePer28d = rollingChargeRate(chargeLog, 28);
+  const chargeRatePer28d = rollingChargeRate(currentPeriodChargeLog, 28);
 
   // VOC forecast with uncertainty band
   const maxHrs = Math.max(vocWindow*1.3, activeHrs+300);
@@ -1464,7 +1474,7 @@ function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastCha
         <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
           <StatPill label="Charge Active Hrs" value={activeHrs.toLocaleString()} unit="hrs"
             color={activeHrs>vocWindow?C.red:activeHrs>vocWindow*0.8?C.amber:C.teal}
-            sub={chargeLog.length>0 ? `${totalCharges} charges logged` : `${daysSince}d x ${(settings.utilisationRate*100).toFixed(0)}% util`} />
+            sub={currentPeriodChargeLog.length>0 ? `${totalCharges} charges logged since changeout` : `${daysSince}d x ${(settings.utilisationRate*100).toFixed(0)}% util`} />
           <StatPill label="Fan Running Hrs" value={Math.round(fanActiveHrs).toLocaleString()} unit="hrs"
             color={C.blue} sub="Bed exposure (24/7 minus downtime)" />
           <StatPill label="VOC Predicted" value={predVOCBand.mid} unit="mg/m3"
@@ -1643,11 +1653,12 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onDeleteCharge, lastChangeout
   const [form, setForm] = useState({ date:new Date().toISOString().slice(0,10), type:"plant1", count:1, durationHrs:"", notes:"" });
   const [csvPreview, setCsvPreview] = useState(null);
   const [csvStatus, setCsvStatus] = useState("");
+  const currentPeriodChargeLog = useMemo(()=>filterChargeLogSince(chargeLog, lastChangeout), [chargeLog, lastChangeout]);
 
-  const plant1Count = chargeLog.filter(c=>normalizeChargeType(c.type)==="plant1").reduce((a,c)=>a+(c.count||1),0);
-  const plant2Count = chargeLog.filter(c=>normalizeChargeType(c.type)==="plant2").reduce((a,c)=>a+(c.count||1),0);
-  const plant1Hrs   = chargeLog.filter(c=>normalizeChargeType(c.type)==="plant1").reduce((a,c)=>a+(c.durationHrs||P1_AVG_HRS)*(c.count||1),0);
-  const plant2Hrs   = chargeLog.filter(c=>normalizeChargeType(c.type)==="plant2").reduce((a,c)=>a+(c.durationHrs||P2_AVG_HRS)*(c.count||1),0);
+  const plant1Count = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant1").reduce((a,c)=>a+(c.count||1),0);
+  const plant2Count = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant2").reduce((a,c)=>a+(c.count||1),0);
+  const plant1Hrs   = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant1").reduce((a,c)=>a+(c.durationHrs||P1_AVG_HRS)*(c.count||1),0);
+  const plant2Hrs   = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant2").reduce((a,c)=>a+(c.durationHrs||P2_AVG_HRS)*(c.count||1),0);
   const totalActiveHrs = Math.round((plant1Hrs+plant2Hrs)*10)/10;
   const stackTempCorrection = settings.stackTempCorrectionC ?? 8;
   const typicalOpTemp = operativeTemp(settings.typicalTempC, stackTempCorrection);
@@ -1657,7 +1668,7 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onDeleteCharge, lastChangeout
   const chargesRemaining = avgHrsPerCharge > 0 ? Math.max(0, Math.floor(remainHrs/avgHrsPerCharge)) : 0;
 
   const cumulChart = useMemo(()=>{
-    const sorted = [...chargeLog].sort((a,b)=>a.date.localeCompare(b.date));
+    const sorted = [...currentPeriodChargeLog].sort((a,b)=>a.date.localeCompare(b.date));
     let cum=0;
     const cMs = new Date(lastChangeout).getTime();
     return sorted.map(c=>{
@@ -1666,11 +1677,11 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onDeleteCharge, lastChangeout
       cum+=hrs;
       return { day:Math.floor((new Date(c.date).getTime()-cMs)/86400000), cumHrs:Math.round(cum*10)/10 };
     });
-  },[chargeLog,lastChangeout]);
+  },[currentPeriodChargeLog,lastChangeout]);
 
   const weeklyData = useMemo(()=>{
     const byWeek={};
-    chargeLog.forEach(c=>{
+    currentPeriodChargeLog.forEach(c=>{
       const d=new Date(c.date), ws=new Date(d);
       ws.setDate(d.getDate()-d.getDay()+1);
       const k=ws.toISOString().slice(0,10);
@@ -1681,7 +1692,7 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onDeleteCharge, lastChangeout
       byWeek[k].hrs+=Math.round(hrs*10)/10;
     });
     return Object.values(byWeek).sort((a,b)=>a.week.localeCompare(b.week));
-  },[chargeLog]);
+  },[currentPeriodChargeLog]);
 
   const handleAdd = ()=>{
     if(!form.date) return;
@@ -3549,13 +3560,14 @@ export default function App() {
   const settings = platformState.cgb_settings || createDefaultPlatformState().cgb_settings;
   const setSettings = useCallback(nextValueOrUpdater => updateKey("cgb_settings", nextValueOrUpdater), [updateKey]);
   const updateSetting = useCallback((k,v)=>setSettings(s=>({...s,[k]:v})),[]);
+  const currentPeriodChargeLog = useMemo(()=>filterChargeLogSince(chargeLog, lastChangeout), [chargeLog, lastChangeout]);
 
   const vocC = useMemo(()=>calibrateVOC(stackData),[stackData]);
   const pahC = useMemo(()=>calibratePAH(stackData),[stackData]);
-  const appLogChargeHrs = useMemo(()=>calcActiveHrsFromLog(chargeLog),[chargeLog]);
+  const appLogChargeHrs = useMemo(()=>calcActiveHrsFromLog(currentPeriodChargeLog),[currentPeriodChargeLog]);
   const appDaysSince = Math.max(0, Math.floor((new Date()-new Date(lastChangeout))/86400000));
   const appFallbackHrs = Math.max(0, Math.round(appDaysSince*24*settings.utilisationRate - downtimeHrs));
-  const chargeActiveHrs = chargeLog.length > 0 ? Math.max(appLogChargeHrs - downtimeHrs, 0) : appFallbackHrs;
+  const chargeActiveHrs = currentPeriodChargeLog.length > 0 ? Math.max(appLogChargeHrs - downtimeHrs, 0) : appFallbackHrs;
   const appAmbientTemp = weather ? weather.temperature_2m : settings.typicalTempC;
   const appRH = settings.useConservativeRH ? 90 : (weather ? weather.relative_humidity_2m : settings.typicalRH);
   const appOperativeTemp = operativeTemp(appAmbientTemp, settings.stackTempCorrectionC ?? 8);
