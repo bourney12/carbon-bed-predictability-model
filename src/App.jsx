@@ -2305,9 +2305,6 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
   const wjFrac = settings.naphthaleneFrac*100;
   const divergence = avgNaph!=null ? Math.abs(avgNaph-wjFrac) : null;
 
-  // CoA naphthalene -> suggested WJ fraction adjustment (Raoult scaling ~0.85 factor)
-  const suggestedWJ = avgNaph!=null ? (avgNaph*0.85).toFixed(1) : null;
-
   // CoA B(a)P trend: high B(a)P correlates with higher PAH loading
   const avgBap = coaRows.filter(d=>d.bap).length>0
     ? coaRows.filter(d=>d.bap).reduce((a,d)=>a+d.bap,0)/coaRows.filter(d=>d.bap).length : null;
@@ -2364,9 +2361,13 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
         <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
           <StatPill label="CoA Avg Naph %" value={avgNaph!=null?avgNaph.toFixed(1):"--"} unit="%" sub="Liquid phase (Raoult)" />
           <StatPill label="WJ Vapour Fraction" value={wjFrac.toFixed(1)} unit="%" sub="Applied to active hrs scaling" />
-          <StatPill label="Divergence" value={divergence!=null?divergence.toFixed(1):"--"} unit="%"
-            color={divergence!=null?(divergence<5?C.teal:divergence<10?C.amber:C.red):C.muted}
-            sub={divergence!=null?(divergence<5?"Consistent":"Review WJ setting"):"No CoA data"} />
+          <StatPill
+            label="Liquid vs Vapour Phase Diff"
+            value={divergence != null ? divergence.toFixed(1) : "--"}
+            unit="%"
+            color={C.muted}
+            sub="Expected - not a calibration signal"
+          />
           <StatPill label="CoA Avg B(a)P" value={avgBap!=null?avgBap.toFixed(2):"--"} unit="ppm"
             color={avgBap!=null?(avgBap>3500?C.red:avgBap>2500?C.amber:C.teal):C.muted}
             sub="PAH loading indicator" />
@@ -2378,17 +2379,8 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
             sub="CoA mean" />
         </div>
         <div style={{ fontSize:12, color:C.muted, marginTop:10 }}>
-          CoA liquid naphthalene and vapour TVOC fraction are distinct (Raoult's Law). WJ fraction is applied as a scaling factor on active hours - higher naphthalene fraction = faster capacity consumption = fewer charges to failure. The WJ fraction directly drives the charges-remaining calculation on the Dashboard.
+          IMPORTANT: CoA naphthalene % (bulk liquid mass fraction) and the WJ vapour-phase TVOC fraction are categorically different quantities and must not be conflated. The WJ fraction is calibrated from MCERTS stack test data (Stack Tests tab) - it represents the measured vapour-phase naphthalene fraction at the carbon bed inlet. CoA liquid naphthalene represents bulk tank composition before volatilisation, ductwork condensation, and demister separation occur. A Raoult scaling factor cannot bridge these two measurements reliably for a complex multi-component creosote matrix. CoA data is used here for batch consistency monitoring only. The WJ fraction setting is governed solely by MCERTS certified stack test evidence.
         </div>
-        {suggestedWJ && Math.abs(parseFloat(suggestedWJ)-wjFrac) > 3 && (
-          <div style={{ marginTop:10, padding:"10px 14px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:7, fontSize:12, color:TINT.amberText }}>
-            CoA data suggests WJ fraction of ~{suggestedWJ}% (Raoult-adjusted from {avgNaph.toFixed(1)}% liquid). Current setting: {wjFrac.toFixed(1)}%.
-            <button onClick={()=>onSettingChange("naphthaleneFrac",parseFloat(suggestedWJ)/100)} disabled={!canEdit}
-              style={{ marginLeft:10, padding:"3px 10px", background:C.amber, color:"#ffffff", border:"none", borderRadius:5, cursor:"pointer", fontSize:11, fontWeight:700 }}>
-              Apply Suggestion
-            </button>
-          </div>
-        )}
         <div style={{ marginTop:14 }}>
           <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5 }}>
             WJ Naphthalene/TVOC Fraction: {wjFrac.toFixed(1)}%
@@ -2398,7 +2390,96 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
             onChange={e=>onSettingChange("naphthaleneFrac",parseFloat(e.target.value)/100)}
             style={{ width:"100%", accentColor:C.rund, opacity:canEdit?1:0.65, cursor:canEdit?"pointer":"not-allowed" }} />
           <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.muted }}>
-            <span>30%</span><span>53% (plant calib.)</span><span>70%</span>
+            <span>30% (below winter ref)</span><span>53% (plant calib. - operative)</span><span>70% (above range)</span>
+          </div>
+        </div>
+        <div style={{
+          marginTop: 16,
+          padding: "12px 14px",
+          background: TINT.blueBg,
+          border: "1px solid " + C.blue,
+          borderRadius: 7,
+          fontSize: 11,
+          color: TINT.blueText,
+          lineHeight: 1.65
+        }}>
+          <div style={{
+            fontWeight: 800,
+            fontSize: 12,
+            marginBottom: 8,
+            color: C.ink
+          }}>
+            Temperature-Calibrated Naphthalene Fraction Reference (Engineering Guidance)
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            Naphthalene volatilisation from Type C creosote is temperature-dependent. At lower stack temperatures, heavier components condense in the ductwork and demister, reducing the naphthalene fraction of TVOC reaching the bed. At higher temperatures, naphthalene constitutes a larger fraction of the inlet stream. The operative WJ fraction of 53% is the plant-calibrated annual average derived from P1-P8 MCERTS data and is the correct value for compliance scheduling. The seasonal reference values below are provided for engineering context only and must not be applied without EA agreement and documented recalibration.
+          </div>
+          <table style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: 11,
+            marginTop: 8
+          }}>
+            <thead>
+              <tr style={{ borderBottom: "2px solid " + C.border }}>
+                {["Season", "Stack Temp Range", "Reference nf", "Basis"].map(h => (
+                  <th key={h} style={{
+                    textAlign: "left",
+                    padding: "5px 8px",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    color: C.muted,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase"
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ["Winter (Dec-Feb)", "15-18 deg C", "0.44", "Below Heikkilaen default. Naphthalene partially condensed in ductwork at low T."],
+                ["Spring / Autumn", "18-22 deg C", "0.50", "Mid-range. Close to Heikkilaen 1987 literature default of 0.45."],
+                ["Summer (Jun-Aug)", "22-28 deg C", "0.57", "Above Heikkilaen default. Full naphthalene volatilisation at elevated T."],
+                ["High Summer", "> 28 deg C", "0.60", "Conservative cap. Maximum volatilisation regime. PAH risk dominant at these temperatures."],
+              ].map(([season, range, nfValue, basis]) => (
+                <tr key={season} style={{
+                  borderBottom: "1px solid " + C.border
+                }}>
+                  <td style={{ padding: "6px 8px", fontWeight: 700 }}>
+                    {season}
+                  </td>
+                  <td style={{
+                    padding: "6px 8px",
+                    fontFamily: MONO
+                  }}>
+                    {range}
+                  </td>
+                  <td style={{
+                    padding: "6px 8px",
+                    fontFamily: MONO,
+                    fontWeight: 700,
+                    color: C.rund
+                  }}>
+                    {nfValue}
+                  </td>
+                  <td style={{
+                    padding: "6px 8px",
+                    color: C.muted,
+                    fontSize: 10
+                  }}>
+                    {basis}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{
+            marginTop: 10,
+            fontSize: 10,
+            color: C.muted,
+            fontStyle: "italic"
+          }}>
+            Operative setting: 53% (plant-calibrated from P1-P8 MCERTS data). This is the correct value for compliance scheduling and EA audit purposes. Seasonal values are engineering reference only. Source: Heikkilaen (1987) 45% literature default; plant calibration P1-P8; vapour pressure analysis of Type C creosote at process temperatures.
           </div>
         </div>
       </Card>
