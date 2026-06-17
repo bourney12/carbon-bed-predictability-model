@@ -3247,7 +3247,7 @@ function SecurityCard({ authState, onLogout, onChangePassword, onCreateUser, adm
 function DocumentLibraryCard({ documents, audit, adminError, isAdmin, onDownload }) {
   return (
     <Card>
-      <SectionTitle>Audit and Documents</SectionTitle>
+      <SectionTitle>Document Library</SectionTitle>
       <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }}>
         <StatPill label="Retained Documents" value={documents.length} unit="" sub="Server-side originals" />
         <StatPill label="Audit Events" value={audit.length} unit="" sub={isAdmin ? "Most recent 100" : "Admin only"} />
@@ -3257,7 +3257,7 @@ function DocumentLibraryCard({ documents, audit, adminError, isAdmin, onDownload
         <div style={{ overflowX:"auto", marginBottom:12 }}>
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
             <thead><tr>{["Type","File","Uploaded","By","Size"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 8px", color:C.muted, fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
-            <tbody>{documents.slice(0, 12).map(doc => <tr key={doc.id} style={{ borderBottom:`1px solid ${C.border}` }}><td style={{ padding:"6px 8px" }}>{doc.category}</td><td style={{ padding:"6px 8px" }}><button onClick={()=>{ void onDownload(doc); }} style={{ border:"none", background:"transparent", color:C.blue, cursor:"pointer", padding:0, fontWeight:700 }}>{doc.fileName}</button></td><td style={{ padding:"6px 8px", fontFamily:MONO }}>{formatSyncStamp(doc.uploadedAt)}</td><td style={{ padding:"6px 8px" }}>{doc.uploadedBy ? doc.uploadedBy.username : "--"}</td><td style={{ padding:"6px 8px", fontFamily:MONO }}>{Math.round((doc.sizeBytes || 0) / 1024)} KB</td></tr>)}</tbody>
+            <tbody>{documents.map(doc => <tr key={doc.id} style={{ borderBottom:`1px solid ${C.border}` }}><td style={{ padding:"6px 8px" }}>{doc.category}</td><td style={{ padding:"6px 8px" }}><button onClick={()=>{ void onDownload(doc); }} style={{ border:"none", background:"transparent", color:C.blue, cursor:"pointer", padding:0, fontWeight:700 }}>{doc.fileName}</button></td><td style={{ padding:"6px 8px", fontFamily:MONO }}>{formatSyncStamp(doc.uploadedAt)}</td><td style={{ padding:"6px 8px" }}>{doc.uploadedBy ? doc.uploadedBy.username : "--"}</td><td style={{ padding:"6px 8px", fontFamily:MONO }}>{Math.round((doc.sizeBytes || 0) / 1024)} KB</td></tr>)}</tbody>
           </table>
         </div>
       ) : <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>No archived documents yet.</div>}
@@ -3272,6 +3272,20 @@ function DocumentLibraryCard({ documents, audit, adminError, isAdmin, onDownload
         ) : <div style={{ fontSize:11, color:C.muted }}>No audit events yet.</div>
       ) : <div style={{ fontSize:11, color:C.muted }}>Audit log is visible to platform admins only.</div>}
     </Card>
+  );
+}
+
+function DocumentLibraryTab({ adminData, isAdmin, onDownloadDocument }) {
+  return (
+    <div>
+      <DocumentLibraryCard
+        documents={adminData.documents}
+        audit={adminData.audit}
+        adminError={adminData.error}
+        isAdmin={isAdmin}
+        onDownload={onDownloadDocument}
+      />
+    </div>
   );
 }
 
@@ -3479,7 +3493,6 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
         </div>
       </Card>
       <SecurityCard authState={authState} onLogout={onLogout} onChangePassword={onChangePassword} onCreateUser={onCreateUser} adminData={adminData} />
-      <DocumentLibraryCard documents={adminData.documents} audit={adminData.audit} adminError={adminData.error} isAdmin={isAdmin} onDownload={onDownloadDocument} />
     </div>
   );
 }
@@ -3557,6 +3570,7 @@ export default function App() {
     { id:"stack",        label:"Stack Tests"   },
     { id:"forecast",     label:"Forward Forecast" },
     { id:"coa",          label:"CoA Data"      },
+    { id:"documents",    label:"Documents"     },
     { id:"tempanalysis", label:"Temp Analysis" },
     { id:"bat",          label:"BAT Compliance" },
     { id:"settings",     label:"Settings"      },
@@ -3566,6 +3580,12 @@ export default function App() {
   useEffect(()=>{
     if (authState.user) void refreshAdminData();
   }, [authState.user, refreshAdminData]);
+
+  useEffect(()=>{
+    if (authState.user && canEdit) {
+      void runChargeImportScan();
+    }
+  }, [authState.user, canEdit, runChargeImportScan]);
 
   if (!authState.ready || authState.loading) {
     return (
@@ -3638,6 +3658,7 @@ export default function App() {
         {activeTab==="stack"        && <StackTestsTab   stackData={stackData} onAdd={e=>setStackDataExtra(d=>[...d,e])} settings={settings} vocC={vocC} pahC={pahC} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="forecast"     && <ForwardForecastTab settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} />}
         {activeTab==="coa"          && <CoATab coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
+        {activeTab==="documents"    && <DocumentLibraryTab adminData={adminData} isAdmin={isAdmin} onDownloadDocument={downloadDocument} />}
         {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} />}
         {activeTab==="bat"          && <BATComplianceTab settings={settings} onChange={updateSetting} canEdit={canEdit} />}
         {activeTab==="settings"     && <SettingsTab     settings={settings} onChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalLog={thermalLog} thermalStats={thermalStats} onAddThermalEntry={entry=>setThermalLog(list=>[...list, entry])} onDeleteThermalEntry={id=>setThermalLog(list=>list.filter(entry=>entry.id!==id))} platformMeta={platformMeta} onExportBackup={exportBackup} onImportBackup={importBackup} onResetPlatform={resetPlatform} onRunChargeImportScan={runChargeImportScan} authState={authState} onLogout={logout} onChangePassword={changePassword} onCreateUser={createUser} adminData={adminData} onDownloadDocument={downloadDocument} />}
