@@ -1309,9 +1309,9 @@ function usePlatformAdminData(enabled, isAdmin) {
     return response.user;
   }, []);
 
-  const downloadDocument = useCallback(async document => {
+  const downloadDocument = useCallback(async fileRecord => {
     const authToken = getStoredPlatformToken();
-    const response = await fetch(`/api/documents/${document.id}/download`, {
+    const response = await fetch(`/api/documents/${fileRecord.id}/download`, {
       headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
     });
     if (!response.ok) {
@@ -1321,9 +1321,16 @@ function usePlatformAdminData(enabled, isAdmin) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = document.fileName || "document.bin";
+    if ((fileRecord.mimeType || "").toLowerCase().includes("pdf")) {
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    } else {
+      a.download = fileRecord.fileName || "document.bin";
+    }
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 30000);
   }, []);
 
   return {
