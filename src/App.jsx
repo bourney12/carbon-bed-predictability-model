@@ -2231,6 +2231,19 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const coaRows = useMemo(() => (coaData || []).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")), [coaData]);
+  const defaultRange = useMemo(() => ({
+    from: coaRows[0]?.date || "",
+    to: coaRows[coaRows.length-1]?.date || "",
+  }), [coaRows]);
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [selectedMetric, setSelectedMetric] = useState("flashpoint");
+
+  useEffect(() => {
+    if (defaultRange.from && !rangeFrom) setRangeFrom(defaultRange.from);
+    if (defaultRange.to && !rangeTo) setRangeTo(defaultRange.to);
+  }, [defaultRange.from, defaultRange.to, rangeFrom, rangeTo]);
 
   const handleFile = useCallback(async (file)=>{
     if(!file||file.type!=="application/pdf"){setImportStatus("PDF files only.");return;}
@@ -2264,13 +2277,13 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
       });
       const parsed = data.extracted || {};
       onImport(parsed);
-      setImportStatus("Imported: "+parsed.certNo+" ("+parsed.date+")"+archiveNotice);
+      setImportStatus("Imported: "+parsed.certNo+" (CoA date "+parsed.date+")"+archiveNotice);
     } catch(e){setImportStatus("Import failed: "+e.message);}
     setImporting(false);
   },[canArchiveDocuments,canEdit,onArchiveDocument,onImport]);
 
-  const avgNaph = coaData.filter(d=>d.naphthalene).length>0
-    ? coaData.filter(d=>d.naphthalene).reduce((a,d)=>a+d.naphthalene,0)/coaData.filter(d=>d.naphthalene).length : null;
+  const avgNaph = coaRows.filter(d=>d.naphthalene).length>0
+    ? coaRows.filter(d=>d.naphthalene).reduce((a,d)=>a+d.naphthalene,0)/coaRows.filter(d=>d.naphthalene).length : null;
   const wjFrac = settings.naphthaleneFrac*100;
   const divergence = avgNaph!=null ? Math.abs(avgNaph-wjFrac) : null;
 
@@ -2278,16 +2291,52 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
   const suggestedWJ = avgNaph!=null ? (avgNaph*0.85).toFixed(1) : null;
 
   // CoA B(a)P trend: high B(a)P correlates with higher PAH loading
-  const avgBap = coaData.filter(d=>d.bap).length>0
-    ? coaData.filter(d=>d.bap).reduce((a,d)=>a+d.bap,0)/coaData.filter(d=>d.bap).length : null;
-  const avgFlashpoint = coaData.filter(d=>d.flashpoint).length>0
-    ? coaData.filter(d=>d.flashpoint).reduce((a,d)=>a+d.flashpoint,0)/coaData.filter(d=>d.flashpoint).length : null;
-  const avgCrystallisation = coaData.filter(d=>d.crystallisation).length>0
-    ? coaData.filter(d=>d.crystallisation).reduce((a,d)=>a+d.crystallisation,0)/coaData.filter(d=>d.crystallisation).length : null;
+  const avgBap = coaRows.filter(d=>d.bap).length>0
+    ? coaRows.filter(d=>d.bap).reduce((a,d)=>a+d.bap,0)/coaRows.filter(d=>d.bap).length : null;
+  const avgFlashpoint = coaRows.filter(d=>d.flashpoint).length>0
+    ? coaRows.filter(d=>d.flashpoint).reduce((a,d)=>a+d.flashpoint,0)/coaRows.filter(d=>d.flashpoint).length : null;
+  const avgCrystallisation = coaRows.filter(d=>d.crystallisation).length>0
+    ? coaRows.filter(d=>d.crystallisation).reduce((a,d)=>a+d.crystallisation,0)/coaRows.filter(d=>d.crystallisation).length : null;
 
-  const chartData = coaData.slice(-30).map(d=>({
-    label:(d.certNo||d.date||"").slice(-5),
-    flashpoint:d.flashpoint, naphthalene:d.naphthalene, bap:d.bap, crystallisation:d.crystallisation
+  const metricOptions = [
+    { value:"flashpoint", label:"Flashpoint", unit:"C", color:C.gold, ref:140, refLabel:"140C spec min" },
+    { value:"crystallisation", label:"Crystallisation", unit:"C", color:C.blue, ref:null, refLabel:"" },
+    { value:"naphthalene", label:"Naphthalene", unit:"%", color:C.rund, ref:null, refLabel:"" },
+    { value:"bap", label:"B(a)P", unit:"ppm", color:C.red, ref:null, refLabel:"" },
+  ];
+  const selectedMetricConfig = metricOptions.find(opt=>opt.value===selectedMetric) || metricOptions[0];
+  const effectiveFrom = rangeFrom || defaultRange.from;
+  const effectiveTo = rangeTo || defaultRange.to;
+  const filteredCoaRows = useMemo(() => coaRows.filter(row => {
+    const rowDate = row.date || "";
+    if (effectiveFrom && rowDate && rowDate < effectiveFrom) return false;
+    if (effectiveTo && rowDate && rowDate > effectiveTo) return false;
+    return true;
+  }), [coaRows, effectiveFrom, effectiveTo]);
+  const filteredMetricRows = filteredCoaRows.filter(row => row[selectedMetric] != null && row[selectedMetric] !== "");
+  const filteredMetricAvg = filteredMetricRows.length
+    ? filteredMetricRows.reduce((sum,row)=>sum + Number(row[selectedMetric] || 0),0) / filteredMetricRows.length
+    : null;
+  const filteredMetricMin = filteredMetricRows.length
+    ? Math.min(...filteredMetricRows.map(row=>Number(row[selectedMetric])))
+    : null;
+  const filteredMetricMax = filteredMetricRows.length
+    ? Math.max(...filteredMetricRows.map(row=>Number(row[selectedMetric])))
+    : null;
+  const filteredChartData = filteredCoaRows.map(row => ({
+    label: row.date ? row.date.slice(5) : (row.certNo || "").slice(-6),
+    fullDate: row.date || "--",
+    certNo: row.certNo || "--",
+    flashpoint: row.flashpoint,
+    crystallisation: row.crystallisation,
+    naphthalene: row.naphthalene,
+    bap: row.bap,
+  }));
+  const crystallisationChartData = filteredCoaRows.filter(row => row.crystallisation != null).map(row => ({
+    label: row.date ? row.date.slice(5) : (row.certNo || "").slice(-6),
+    fullDate: row.date || "--",
+    certNo: row.certNo || "--",
+    crystallisation: row.crystallisation,
   }));
 
   return (
@@ -2349,40 +2398,63 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
         {!canEdit ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Viewer mode: CoA upload and WJ setting changes are locked.</div> : null}
       </Card>
 
-      {chartData.length > 1 && (
+      {filteredChartData.length > 0 && (
         <Card>
-          <SectionTitle>CoA Trends (Last 30 Deliveries)</SectionTitle>
-          <div style={{ marginBottom:6, fontSize:11, fontWeight:700, color:C.muted }}>Flashpoint (C) - spec min 140C</div>
-          <ResponsiveContainer width="100%" height={130}>
-            <LineChart data={chartData}>
+          <SectionTitle>CoA Date-Range Analysis</SectionTitle>
+          <div style={{ display:"flex", gap:12, flexWrap:"wrap", alignItems:"flex-end", marginBottom:10 }}>
+            <Input label="From" type="date" value={rangeFrom} onChange={setRangeFrom} style={{ flex:"1 1 150px", marginBottom:0 }} />
+            <Input label="To" type="date" value={rangeTo} onChange={setRangeTo} style={{ flex:"1 1 150px", marginBottom:0 }} />
+            <div style={{ flex:"1 1 180px", marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5, lineHeight:1.2 }}>Metric</label>
+              <select value={selectedMetric} onChange={e=>setSelectedMetric(e.target.value)}
+                style={{ width:"100%", height:36, padding:"8px 12px", border:`1px solid ${C.border}`, borderRadius:2, fontSize:13, color:C.ink, background:C.surface2, boxSizing:"border-box", outline:`1px solid ${C.borderBright}` }}>
+                {metricOptions.map(opt=><option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+            </div>
+            <Btn small variant="ghost" onClick={()=>{ setRangeFrom(defaultRange.from); setRangeTo(defaultRange.to); }}>Reset Range</Btn>
+          </div>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }}>
+            <StatPill label="Records In Range" value={filteredCoaRows.length} sub={`${effectiveFrom || "--"} to ${effectiveTo || "--"}`} />
+            <StatPill label={`${selectedMetricConfig.label} Avg`} value={filteredMetricAvg!=null?filteredMetricAvg.toFixed(2):"--"} unit={selectedMetricConfig.unit} color={selectedMetricConfig.color} sub="Selected date range" />
+            <StatPill label={`${selectedMetricConfig.label} Min`} value={filteredMetricMin!=null?filteredMetricMin.toFixed(2):"--"} unit={selectedMetricConfig.unit} color={selectedMetricConfig.color} sub="Lowest in range" />
+            <StatPill label={`${selectedMetricConfig.label} Max`} value={filteredMetricMax!=null?filteredMetricMax.toFixed(2):"--"} unit={selectedMetricConfig.unit} color={selectedMetricConfig.color} sub="Highest in range" />
+          </div>
+          <div style={{ marginBottom:6, fontSize:11, fontWeight:700, color:C.muted }}>{selectedMetricConfig.label} ({selectedMetricConfig.unit}) over selected CoA date range</div>
+          <ResponsiveContainer width="100%" height={170}>
+            <LineChart data={filteredChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e5ea" />
               <XAxis dataKey="label" tick={{ fontSize:9, fill:C.ink }} />
               <YAxis domain={["auto","auto"]} tick={{ fontSize:10, fill:C.ink }} />
-              <ReferenceLine y={140} stroke={C.amber} strokeDasharray="4 2" label={{ value:"140C", fill:C.amber, fontSize:9 }} />
-              <Tooltip formatter={(v)=>[v?v.toFixed(1):"--","Flashpoint"]} />
-              <Line type="monotone" dataKey="flashpoint" stroke={C.gold} strokeWidth={2} dot={{ r:2 }} name="Flashpoint" />
+              {selectedMetricConfig.ref!=null ? <ReferenceLine y={selectedMetricConfig.ref} stroke={C.amber} strokeDasharray="4 2" label={{ value:selectedMetricConfig.refLabel, fill:C.amber, fontSize:9 }} /> : null}
+              <Tooltip formatter={(v)=>[v!=null?Number(v).toFixed(2):"--",`${selectedMetricConfig.label} (${selectedMetricConfig.unit})`]} labelFormatter={(label, rows)=>{
+                const row = rows && rows[0] && rows[0].payload ? rows[0].payload : null;
+                return row ? `${row.fullDate} | ${row.certNo}` : label;
+              }} />
+              <Line type="monotone" dataKey={selectedMetric} stroke={selectedMetricConfig.color} strokeWidth={2} dot={{ r:2 }} name={selectedMetricConfig.label} />
             </LineChart>
           </ResponsiveContainer>
-          <div style={{ marginTop:10, marginBottom:6, fontSize:11, fontWeight:700, color:C.muted }}>Naphthalene % and B(a)P ppm - both feed model</div>
-          <ResponsiveContainer width="100%" height={130}>
-            <LineChart data={chartData}>
+          {filteredMetricRows.length === 0 ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>No {selectedMetricConfig.label.toLowerCase()} values are available within the selected CoA date range.</div> : null}
+          <div style={{ marginTop:14, marginBottom:6, fontSize:11, fontWeight:700, color:C.muted }}>Crystallisation point (C) over selected CoA date range</div>
+          <ResponsiveContainer width="100%" height={140}>
+            <LineChart data={crystallisationChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e5ea" />
               <XAxis dataKey="label" tick={{ fontSize:9, fill:C.ink }} />
-              <YAxis yAxisId="n" domain={["auto","auto"]} tick={{ fontSize:10, fill:C.ink }} />
-              <YAxis yAxisId="b" orientation="right" domain={["auto","auto"]} tick={{ fontSize:10, fill:C.ink }} />
-              <Tooltip formatter={(v,n)=>[v?v.toFixed(2):"--",n]} />
-              <Line yAxisId="n" type="monotone" dataKey="naphthalene" stroke={C.rund} strokeWidth={2} dot={{ r:2 }} name="Naphthalene %" />
-              <Line yAxisId="b" type="monotone" dataKey="bap" stroke={C.red} strokeWidth={1.5} strokeDasharray="4 2" dot={{ r:2 }} name="B(a)P ppm" />
-              <Legend />
+              <YAxis domain={["auto","auto"]} tick={{ fontSize:10, fill:C.ink }} />
+              <Tooltip formatter={(v)=>[v!=null?Number(v).toFixed(2):"--","Crystallisation (C)"]} labelFormatter={(label, rows)=>{
+                const row = rows && rows[0] && rows[0].payload ? rows[0].payload : null;
+                return row ? `${row.fullDate} | ${row.certNo}` : label;
+              }} />
+              <Line type="monotone" dataKey="crystallisation" stroke={C.blue} strokeWidth={2} dot={{ r:2 }} name="Crystallisation" />
             </LineChart>
           </ResponsiveContainer>
+          {filteredChartData.length === 0 ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>No CoA records fall within the selected date range.</div> : null}
         </Card>
       )}
 
       <Card>
         <SectionTitle>Manual CoA Entry</SectionTitle>
         <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
-          <Input label="Date" type="date" value={form.date} onChange={v=>setForm(f=>({...f,date:v}))} style={{ flex:"1 1 140px" }} />
+          <Input label="CoA Date" type="date" value={form.date} onChange={v=>setForm(f=>({...f,date:v}))} style={{ flex:"1 1 140px" }} />
           <Input label="Cert No" value={form.certNo} onChange={v=>setForm(f=>({...f,certNo:v}))} style={{ flex:"1 1 120px" }} />
           <Input label="Flashpoint C" type="number" step="0.1" value={form.flashpoint} onChange={v=>setForm(f=>({...f,flashpoint:v}))} style={{ flex:"1 1 100px" }} />
           <Input label="Crystallisation C" type="number" step="0.1" value={form.crystallisation} onChange={v=>setForm(f=>({...f,crystallisation:v}))} style={{ flex:"1 1 100px" }} />
@@ -2399,7 +2471,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
               <thead>
                 <tr style={{ borderBottom:`2px solid ${C.border}` }}>
-                  {["Date","Cert No","Flashpoint","Crystallisation","Naph %","B(a)P ppm"].map(h=>(
+                  {["CoA Date","Cert No","Flashpoint","Crystallisation","Naph %","B(a)P ppm"].map(h=>(
                     <th key={h} style={{ textAlign:"left", padding:"6px 10px", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase" }}>{h}</th>
                   ))}
                 </tr>

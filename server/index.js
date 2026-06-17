@@ -324,7 +324,7 @@ const server = http.createServer(async (req, res) => {
       const extracted = await extractPdfWithAnthropic({
         base64: body.base64,
         mimeType: body.mimeType || "application/pdf",
-        prompt: 'Extract from this Koppers creosote CoA. Return ONLY JSON with no markdown fences: {"date":"YYYY-MM-DD or empty string","certNo":"string","flashpoint":number_or_null,"crystallisation":number_or_null,"naphthalene":number_or_null,"bap":number_or_null}.',
+        prompt: 'Extract from this Koppers creosote CoA. Return ONLY JSON with no markdown fences: {"date":"YYYY-MM-DD or empty string","certNo":"string","flashpoint":number_or_null,"crystallisation":number_or_null,"naphthalene":number_or_null,"bap":number_or_null}. The "date" field must be the CoA certificate date from the document itself. Prefer fields explicitly labeled CoA Date, Certificate Date, Date of Analysis, Analysis Date, or equivalent certificate issue date. The "certNo" field must be the certificate or batch certificate identifier only. Use flashpoint in C, crystallisation point in C, naphthalene in percent, and benzo(a)pyrene or B(a)P in ppm. Do not use upload dates, printed dates, footer dates, scan dates, email dates, or any unrelated date elsewhere in the PDF.',
       });
       return sendJson(res, 200, { extracted });
     }
