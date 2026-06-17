@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: carbon-bed-predictability-model
+    runtime: node
+    plan: starter
+    autoDeploy: true
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+      - key: CARBON_PLATFORM_DATA_DIR
+        value: /var/data
+      - key: CARBON_CHARGE_IMPORT_DIR
+        value: /var/data/imports/charges
+      - key: CARBON_PLATFORM_ADMIN_USER
+        value: admin
+      - key: CARBON_PLATFORM_ADMIN_PASSWORD
+        sync: false
+      - key: CARBON_PLATFORM_SESSION_HOURS
+        value: 12
+      - key: CARBON_ANTHROPIC_API_KEY
+        sync: false
+      - key: CARBON_ANTHROPIC_MODEL
+        value: claude-sonnet-4-20250514
+    disk:
+      name: carbon-platform-data
+      mountPath: /var/data
+      sizeGB: 10

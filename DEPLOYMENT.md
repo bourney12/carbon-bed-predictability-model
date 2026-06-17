@@ -1,0 +1,121 @@
+# Deployment Guide
+
+This app is now wired to deploy as a single Node service:
+
+- the backend serves `/api`
+- the same backend serves the built React frontend from `dist/`
+- live shared data persists in SQLite at `work/platform-data/platform.sqlite`
+
+## Required Environment
+
+Copy [.env.example](C:/Users/cgjabo/Documents/Codex/2026-06-08/files-mentioned-by-the-user-carbon/.env.example) and set:
+
+- `CARBON_PLATFORM_ADMIN_PASSWORD`
+- `CARBON_ANTHROPIC_API_KEY`
+
+Recommended:
+
+- set `CARBON_PLATFORM_DATA_DIR` to a persistent mounted directory
+- keep `HOST=0.0.0.0`
+- set `PORT` from your host/platform
+
+## Local Production Run
+
+Install dependencies:
+
+```powershell
+npm install
+```
+
+Build the frontend:
+
+```powershell
+npm run build
+```
+
+Start the unified server:
+
+```powershell
+npm start
+```
+
+The app will then be available from the same process:
+
+- frontend at `/`
+- API at `/api/*`
+
+## Docker Run
+
+Build:
+
+```powershell
+docker build -t carbon-bed-platform .
+```
+
+Run:
+
+```powershell
+docker run ^
+  -p 8787:8787 ^
+  -e CARBON_PLATFORM_ADMIN_PASSWORD=replace_me ^
+  -e CARBON_ANTHROPIC_API_KEY=replace_me ^
+  -v carbon-platform-data:/app/work/platform-data ^
+  carbon-bed-platform
+```
+
+## Render Deployment
+
+This repo is now wired for Render with [render.yaml](C:/Users/cgjabo/Documents/Codex/2026-06-08/files-mentioned-by-the-user-carbon/render.yaml).
+
+Important:
+
+- this app must run as a Render `web` service, not a static site
+- it needs a persistent disk because SQLite, retained PDFs, snapshots, and charge imports are server-side
+- the included Blueprint uses a disk mounted at `/var/data`
+
+Render setup flow:
+
+1. Push this repo to GitHub.
+2. In Render, create a new Blueprint from the repository.
+3. Confirm the service settings from `render.yaml`.
+4. Set the unsynced secrets in the Render dashboard:
+   - `CARBON_PLATFORM_ADMIN_PASSWORD`
+   - `CARBON_ANTHROPIC_API_KEY`
+5. Deploy.
+
+The service will:
+
+- run `npm install && npm run build`
+- start with `npm start`
+- expose health at `/api/health`
+
+Expected public app URL:
+
+- `https://<your-render-service>.onrender.com`
+
+## Operational Checklist
+
+Before calling the deployment live:
+
+1. Confirm login works with the admin user.
+2. Change the bootstrap admin password immediately.
+3. Create at least one operator account and one viewer account.
+4. Upload a CoA PDF and verify:
+   - extraction succeeds
+   - original PDF appears in the document library
+   - the record survives restart
+5. Upload a stack test PDF and verify the same.
+6. Drop a charge CSV into the inbox and confirm it is:
+   - imported
+   - archived
+   - reflected in the shared charge log
+7. Restart the server and confirm state reloads from SQLite.
+8. Back up the SQLite file and snapshots directory as part of host backup policy.
+
+## Production Notes
+
+- `work/platform-data/platform.sqlite` is now the live source of truth.
+- `work/platform-data/live-state.json` is only a legacy migration source if present.
+- Keep `work/platform-data/` on persistent storage, not ephemeral disk.
+- The server-side AI extraction depends on Anthropic being reachable from the deployment host.
+- P8 PAH remains the highest-value missing calibration input.
