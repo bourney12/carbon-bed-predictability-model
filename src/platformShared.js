@@ -18,7 +18,7 @@ export function createDefaultSettings() {
     utilisationRate: 0.82,
     typicalTempC: 12.0,
     typicalRH: 80,
-    stackTempCorrectionC: 8,
+    stackTempCorrectionC: 10.3,
     preTestBufferDays: 14,
     preTestBufferActiveHrs: 150,
     vocRiskWeight: 0.55,

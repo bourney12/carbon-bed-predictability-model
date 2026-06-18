@@ -43,8 +43,8 @@ const TINT = {
   blueText: "#0d3d6e",
 };
 const MONO = "'Consolas', 'Courier New', monospace";
-const MODEL_VERSION = "v1.5.1";
-const MODEL_BUILD_DATE = "2026-06-11";
+const MODEL_VERSION = "v1.6.0";
+const MODEL_BUILD_DATE = "2026-06-18";
 
 // ============================================================
 // CONSTANTS
@@ -61,8 +61,10 @@ const LAT        = 52.9833;
 const LON        = 0.0167;
 const P1_AVG_HRS = 5.85;    // hrs/charge  Plant 1 (blended average, all product types)
 const P2_AVG_HRS = 7.84;    // hrs/charge  Plant 2 (blended average, all product types)
-// Fallback ambient-to-inlet offset for forward forecast temperature projection: +8 deg C.
-const FALLBACK_AMBIENT_TO_INLET_OFFSET_C = 8;
+// Updated 2026-06-18: Testo 925 spot reading validated +10.3 deg C delta.
+// Pre-bed inlet 22.7 deg C, external ambient 12.4 deg C.
+// Replaces the inferred +8 deg C interim value used before site measurement.
+const FALLBACK_AMBIENT_TO_INLET_OFFSET_C = 10.3;
 const PLANT_STATES = ["Impregnating","Draining","Conditioning","Idle","Maintenance","Steaming"];
 const EMPTY_THERMAL_LOG_ENTRY = {
   id: "",
@@ -457,8 +459,13 @@ function calibratePAH(stackData) {
   return { a: fit.a, b: fit.b, c: fit.c, r2: fit.r2, rmse, n: v.length, freshOnly: fresh.length>=3, bayesC: pahBayesC, bayesianActive: pahBayesianActive };
 }
 
-// predictVOC: uses raw active hours (consistent with calibration at nf=0.53 baseline).
-// WJ fraction does NOT scale the hours input here - it scales the safeWindowHours output.
+// predictVOC: calibrated under Config A fan configuration (9,000 m3/hr nominal).
+// activeHrs is treated as raw hours. For any period spanning Config B
+// (reduced flow ~6,000 m3/hr, correction factor ~0.667), the caller should
+// pre-apply calcEffectiveHours() to activeHrs before calling this function.
+// For current Config A operations this discrepancy is negligible (<5%).
+// This assumption must be revisited before any Config B period enters
+// the live calibration dataset.
 function predictVOC(activeHrs, ambientTemp, rhPct, vocC) {
   const a = vocC ? vocC.a : D_VOC_A, b = vocC ? vocC.b : D_VOC_B, ci = vocC ? vocC.c : D_VOC_C;
   const hf = humidityFactor(rhPct != null ? rhPct : 75), hp = (1-hf)*0.6;
@@ -573,7 +580,7 @@ function rollingChargeRate(chargeLog, days) {
 }
 
 const BOSTON_MONTHLY_TEMPS = [
-  4.2, 4.5, 6.8, 9.3, 12.6, 15.4, 17.6, 17.3, 14.8, 11.2, 7.4, 4.8
+  4.2, 4.5, 6.8, 9.3, 12.6, 15.4, 17.6, 173/10, 14.8, 11.2, 7.4, 4.8
 ];
 
 const BOSTON_MONTHLY_RH = [
@@ -632,7 +639,7 @@ function computeThermalStats(thermalLog) {
   if (count < 1) return { count:0, rows:[], ready:false, meanAmbientToInletDelta:null, stdDevAmbientToInletDelta:null, latestDelta:null, latestAmbientTemp:null, minExotherm:null, maxExotherm:null, commonPlant1:"--", commonPlant2:"--" };
   const deltas = rows.map(r => r.ambientToInletDelta);
   const mean = deltas.reduce((sum, val)=>sum+val,0) / count;
-  const variance = deltas.reduce((acc, val) => acc + (val - mean) * (val - mean), 0) / count;
+  const variance = deltas.reduce((acc, val) => acc + (val - mean) * (val - mean), 0) / Math.max(count - 1, 1);
   const sortedRows = rows.slice().sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   const exotherms = rows.map(r => r.exotherm);
   const commonState = field => {
@@ -712,7 +719,7 @@ function buildForwardForecast({ startDate, startActiveHrs, utilisationPct, mode,
     const date = addDays(startDate, day);
     const ambient = getScenarioAmbientTemp(day, startDate, mode, flatTemp, monthlyTemps, liveTemps);
     const tOperative = operativeTemp(ambient, correctionFactor);
-    const vocMid = Math.round(predictVOC(cumulativeHrs, tOperative, forecastRH, vocC) * 10) / 10;
+    const vocMid = Math.round(predictVOC(cumulativeHrs, ambient, forecastRH, vocC) * 10) / 10;
     const vocLo = Math.round(vocMid / Math.exp(rmse) * 10) / 10;
     const vocHi = Math.round(vocMid * Math.exp(rmse) * 10) / 10;
     const overrideStackTemp = pahStackTempOverride !== "" && pahStackTempOverride != null && Number.isFinite(Number(pahStackTempOverride)) ? Number(pahStackTempOverride) : null;
@@ -773,14 +780,17 @@ function getMostRecentPeriodWithMissingPAH(stackData) {
   return missing[0] || null;
 }
 
-function MissingPAHBanner({ period, dismissed, onDismiss }) {
-  if (!period || dismissed) return null;
+function MissingPAHBanner({ period }) {
+  if (!period) return null;
   return (
-    <div style={{ marginBottom:16, padding:"12px 14px", border:`2px solid ${C.red}`, borderRadius:8, background:TINT.redBg, color:TINT.redText, display:"flex", gap:12, alignItems:"flex-start", justifyContent:"space-between" }}>
-      <div style={{ fontSize:12, lineHeight:1.5, fontWeight:700 }}>
-        PAH RESULT OUTSTANDING: {period.period} PAH certified result not yet received. PAH model is not calibrated on the current carbon charge. PAH risk predictions are based on prior periods only. Obtain and enter the certified PAH result immediately.
-      </div>
-      <button onClick={onDismiss} aria-label="Dismiss PAH outstanding warning" style={{ border:"none", background:"transparent", color:C.red, fontWeight:900, cursor:"pointer", fontSize:18, lineHeight:1 }}>x</button>
+    <div style={{ marginBottom:16, padding:"12px 14px", border:"2px solid " + C.red,
+      borderRadius:8, background:TINT.redBg, color:TINT.redText,
+      fontSize:12, lineHeight:1.5, fontWeight:700 }}>
+      {"PAH RESULT OUTSTANDING: " + period.period + " PAH certified result not yet received. " +
+      "PAH model is not calibrated on the current carbon charge. " +
+      "PAH risk predictions are based on prior periods only. " +
+      "Obtain and enter the certified PAH result immediately. " +
+      "This banner clears automatically when the result is entered."}
     </div>
   );
 }
@@ -1357,27 +1367,78 @@ function usePlatformAdminData(enabled, isAdmin) {
 
 function ModelStatusBanner({ vocC, pahC, settings }) {
   const vOk = vocC.n >= 3, pOk = pahC.n >= 3;
-  const stackTempCorrection = settings && settings.stackTempCorrectionC != null ? settings.stackTempCorrectionC : 8;
+  const stackTempCorrection = settings && settings.stackTempCorrectionC != null ? settings.stackTempCorrectionC : 10.3;
   const looLabel = vocC.r2_loo != null ? vocC.r2_loo.toFixed(3) : "insufficient data (need 4+ periods)";
   const residualRows = INITIAL_STACK_DATA.filter(d=>d.voc != null && d.activeHrs > 0).map(d=>{
     const effectiveHrs = calcEffectiveHours(d.activeHrs, d.periodStart, d.periodEnd);
-    const pred = predictVOC(effectiveHrs, operativeTemp(d.avgTemp, stackTempCorrection), d.avgRH, vocC);
+    const pred = predictVOC(effectiveHrs, d.avgTemp, d.avgRH, vocC);
     return { period:d.period, actual:d.voc, pred, err: Math.round(((d.voc - pred) / Math.max(pred, 0.1)) * 100) };
   });
   const p4Err = residualRows.find(r=>r.period==="P4");
   const p7Err = residualRows.find(r=>r.period==="P7");
+  const looColor = vocC.r2_loo == null ? C.muted : vocC.r2_loo < 0 ? C.red : vocC.r2_loo < 0.4 ? C.amber : C.teal;
+  const looDisplay = vocC.r2_loo == null
+    ? "insufficient data (need 4+ periods)"
+    : vocC.r2_loo < 0
+    ? looLabel + " (negative -- see note)"
+    : looLabel;
   return (
     <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
       <div style={{ flex:1, minWidth:200, background:vOk?TINT.safeBg:TINT.amberBg, border:`1px solid ${vOk?C.teal:C.amber}`, borderRadius:8, padding:"10px 14px" }}>
         <div style={{ fontSize:10, fontWeight:700, color:vOk?C.teal:C.amber, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>VOC Model</div>
-        <div style={{ fontSize:12, color:C.ink }}>{vOk ? `n=${vocC.n} | In-sample R2: ${vocC.r2.toFixed(3)} | LOO CV R2: ${looLabel}` : `Defaults (n=${vocC.n} - need 3+)`}</div>
+        <div style={{ fontSize:12, color:C.ink }}>
+          {vOk ? (
+            <>
+              {`n=${vocC.n} | In-sample R2: ${vocC.r2.toFixed(3)} | LOO CV R2: `}
+              <span style={{ color:looColor }}>{looDisplay}</span>
+            </>
+          ) : `Defaults (n=${vocC.n} - need 3+)`}
+        </div>
         <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>a={vocC.a.toFixed(3)} b={vocC.b.toFixed(3)} c={vocC.c.toFixed(3)} | Uncertainty band: x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)}</div>
         <div style={{ fontSize:10, color:vocC.bayesianActive?C.teal:C.muted, marginTop:2 }}>
           Bayes: {vocC.bayesianActive ? "Active" : "Inactive"} | {vocC.bayesianActive ? `delta c=${vocC.bayesC ? (vocC.bayesC.mean - vocC.c).toFixed(3) : "n/a"}` : `n=${vocC.n} of 4 req.`}
         </div>
         <div style={{ fontSize:10, color:TINT.amberText, marginTop:6, padding:"7px 9px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:6, lineHeight:1.45 }}>
-          LOO CV R2 is the leave-one-out cross-validated coefficient of determination. It estimates how well the model predicts periods it was NOT trained on. For compliance scheduling, LOO CV R2 is the more conservative and EA-defensible reliability metric. In-sample R2 is shown for calibration audit trail only. {vocC.r2_loo == null ? "LOO CV requires a minimum of 4 independent calibration periods." : ""}
+          {"LOO CV R2 is the leave-one-out cross-validated R2. It estimates predictive " +
+          "accuracy on periods NOT used for fitting and is the primary EA-defensible " +
+          "reliability metric. In-sample R2 is shown for audit trail only. " +
+          "At n=" + vocC.n + " independent periods, LOO CV R2 has high variance " +
+          "and is sensitive to influential outliers. A negative LOO CV R2 indicates " +
+          "the most influential period (currently P8, VOC 63.9 mg/m3, 3.2x ELV) " +
+          "cannot be predicted from the remaining " + (vocC.n - 1) + " periods -- " +
+          "this is diagnostic information, not a model failure. " +
+          "LOO CV R2 will stabilise as n increases beyond 8 independent periods."}
         </div>
+        {(function() {
+          var bayesRefPeriod = INITIAL_STACK_DATA.filter(function(d) {
+            return d.sameCarbon === false && d.voc != null;
+          }).slice(-1)[0];
+          if (!bayesRefPeriod || !vocC.bayesianActive || !vocC.bayesC) return null;
+          var hf = humidityFactor(bayesRefPeriod.avgRH);
+          var hp = (1 - hf) * 0.6;
+          var ridgePred = Math.round(Math.exp(
+            vocC.a * Math.log(Math.max(bayesRefPeriod.activeHrs, 1)) +
+            vocC.b * bayesRefPeriod.avgTemp + vocC.c + hp
+          ) * 10) / 10;
+          var bayesPred = Math.round(Math.exp(
+            vocC.a * Math.log(Math.max(bayesRefPeriod.activeHrs, 1)) +
+            vocC.b * bayesRefPeriod.avgTemp + vocC.bayesC.mean + hp
+          ) * 10) / 10;
+          var diff = Math.round((bayesPred - ridgePred) * 10) / 10;
+          var diffColor = Math.abs(diff) > 5 ? C.amber : C.muted;
+          return (
+            <div style={{ fontSize:10, color:diffColor, marginTop:2 }}>
+              {"Bayes ref (" + bayesRefPeriod.period + ", " +
+              bayesRefPeriod.activeHrs + " hrs, " +
+              bayesRefPeriod.avgTemp + "C): " +
+              "Ridge=" + ridgePred.toFixed(1) + " mg/m3, " +
+              "Bayes-adj=" + bayesPred.toFixed(1) + " mg/m3, " +
+              "actual=" + bayesRefPeriod.voc + " mg/m3. " +
+              "Delta=" + (diff > 0 ? "+" : "") + diff.toFixed(1) + " mg/m3. " +
+              "Bayes intercept shift informational only -- not applied to compliance outputs."}
+            </div>
+          );
+        })()}
         <div style={{ fontSize:10, color:C.amber, marginTop:2 }}>Calibration dataset: independent carbon charge periods only (sameCarbon=false). P1-P3 excluded (same-carbon cumulative observations, not independent data points). n={vocC.n}.</div>
         <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>P2 retained for anomaly display but excluded by sameCarbon filter. Prediction uncertainty x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} (effective RMSE band in log space).</div>
         {p4Err && p7Err && (
@@ -1389,7 +1450,7 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
       <div style={{ flex:1, minWidth:200, background:pOk?TINT.safeBg:TINT.amberBg, border:`1px solid ${pOk?C.teal:C.amber}`, borderRadius:8, padding:"10px 14px" }}>
         <div style={{ fontSize:10, fontWeight:700, color:pOk?C.teal:C.amber, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>PAH Model</div>
         <div style={{ fontSize:12, color:C.ink }}>{pOk ? `Live calibrated (n=${pahC.n}, R2=${pahC.r2.toFixed(3)})` : `Defaults (n=${pahC.n} - need 3+)`}</div>
-        <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>Bivariate: temp + age. Breach stack temp at 500hrs: {pahFailTemp(500, pahC).toFixed(1)}C (~{(pahFailTemp(500,pahC)-10).toFixed(1)}C ambient)</div>
+        <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>Bivariate: temp + age. Breach stack temp at 500hrs: {pahFailTemp(500, pahC).toFixed(1)}C (~{((pahFailTemp(500, pahC) - STACK_TEMP_A) / STACK_TEMP_B).toFixed(1)}C ambient)</div>
         <div style={{ fontSize:10, color:pahC.bayesianActive?C.teal:C.muted, marginTop:2 }}>
           Bayes: {pahC.bayesianActive ? "Active" : "Inactive"} | {pahC.bayesianActive ? `delta c=${pahC.bayesC ? (pahC.bayesC.mean - pahC.c).toFixed(3) : "n/a"}` : `n=${pahC.n} of 4 req.`}
         </div>
@@ -1406,7 +1467,6 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
 // DASHBOARD TAB
 // ============================================================
 function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastChangeout, downtimeHrs, onDowntime, onFanHrs, vocC, pahC, canEdit }) {
-  const [dismissPahWarning, setDismissPahWarning] = useState(false);
   const [showWeighting, setShowWeighting] = useState(false);
   const currentPeriodChargeLog = useMemo(()=>filterChargeLogSince(chargeLog, lastChangeout), [chargeLog, lastChangeout]);
   const logChargeHrs = useMemo(()=>calcActiveHrsFromLog(currentPeriodChargeLog),[currentPeriodChargeLog]);
@@ -1423,7 +1483,7 @@ function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastCha
   const ambientTemp = weather ? weather.temperature_2m : settings.typicalTempC;
   const rawRh       = weather ? weather.relative_humidity_2m : settings.typicalRH;
   const rh          = settings.useConservativeRH ? 90 : rawRh;
-  const stackTempCorrection = settings.stackTempCorrectionC ?? 8;
+  const stackTempCorrection = settings.stackTempCorrectionC ?? 10.3;
   const opTemp = operativeTemp(ambientTemp, stackTempCorrection);
   const opNote = operativeTempNote(ambientTemp, stackTempCorrection);
   // Stack temp estimate via linear regression on P1-P8 MCERTS data (R2=0.92)
@@ -1431,11 +1491,11 @@ function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastCha
   const hf = humidityFactor(rh);
   const nf = settings.naphthaleneFrac;
 
-  const predVOCBand = predictVOCBand(activeHrs, opTemp, rh, vocC);
+  const predVOCBand = predictVOCBand(activeHrs, ambientTemp, rh, vocC);
   const predPAH     = predictPAH(estStackTemp, activeHrs, pahC);
   const pahThresh   = pahFailTemp(activeHrs, pahC);
   const pahBreaching = estStackTemp >= pahThresh;
-  const vRisk = vocRiskScore(activeHrs, opTemp, rh, vocC);
+  const vRisk = vocRiskScore(activeHrs, ambientTemp, rh, vocC);
   const pRisk = pahRiskScore(estStackTemp, activeHrs, pahC);
   const vocRiskWeight = settings.vocRiskWeight != null ? settings.vocRiskWeight : 0.55;
   const pahRiskWeight = 1 - vocRiskWeight;
@@ -1443,7 +1503,7 @@ function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastCha
   const wjBedLife = wheelerJonasBedLife(opTemp, predVOCBand.mid, settings);
   const missingPah = getMostRecentPeriodWithMissingPAH(stackData);
 
-  const vocWindow   = safeWindowHoursVOC(opTemp, rh, vocC, nf);
+  const vocWindow   = safeWindowHoursVOC(ambientTemp, rh, vocC, nf);
   const remainHrs   = Math.max(0, vocWindow - activeHrs);
   const remainDays  = Math.round(remainHrs / (24*settings.utilisationRate));
 
@@ -1464,13 +1524,33 @@ function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastCha
   const step = Math.max(20, Math.round(maxHrs/50));
   const forecastVOC = [];
   for(let h=0; h<=maxHrs; h+=step) {
-    const band = predictVOCBand(h, opTemp, rh, vocC);
+    const band = predictVOCBand(h, ambientTemp, rh, vocC);
     forecastVOC.push({ hrs:h, mid:band.mid, lo:band.lo, hi:band.hi, elv:VOC_ELV });
   }
 
   return (
     <div>
-      <MissingPAHBanner period={missingPah} dismissed={dismissPahWarning} onDismiss={()=>setDismissPahWarning(true)} />
+      <MissingPAHBanner period={missingPah} />
+      {(function() {
+        var todayStr = new Date().toISOString().slice(0, 10);
+        var cfg = getFanConfigAtDate(todayStr);
+        if (cfg && cfg.label && cfg.label.toLowerCase().indexOf("reduced") >= 0) {
+          return (
+            <div style={{ marginBottom:16, padding:"12px 14px",
+              border:"2px solid " + C.amber, borderRadius:8,
+              background:TINT.amberBg, color:TINT.amberText,
+              fontSize:12, fontWeight:700, lineHeight:1.5 }}>
+              FAN CONFIG B ACTIVE: Extraction fan running at reduced speed
+              ({cfg.fanRPM.toLocaleString()} rpm, approx {cfg.typicalStackDischargeFlow_m3hr.toLocaleString()} m3/hr).
+              VOC predictions use raw active hours without flow correction.
+              For precise scheduling during Config B, apply calcEffectiveHours()
+              to active hours manually before interpreting the VOC safe window.
+              PAH model is unaffected.
+            </div>
+          );
+        }
+        return null;
+      })()}
       <ModelStatusBanner vocC={vocC} pahC={pahC} settings={settings} />
 
       <Card style={{ borderLeft:`4px solid ${riskBand(combined).color}` }}>
@@ -1495,7 +1575,7 @@ function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastCha
         <SectionTitle>Remaining Life to Failure</SectionTitle>
         <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
           <StatPill label="VOC Safe Window" value={vocWindow.toLocaleString()} unit="hrs"
-            color={C.blue} sub={`At T_op ${opTemp.toFixed(1)}C, RH${rh.toFixed(0)}%, nf=${(nf*100).toFixed(0)}%`} />
+            color={C.blue} sub={`At ambient ${ambientTemp.toFixed(1)}C, RH${rh.toFixed(0)}%, nf=${(nf*100).toFixed(0)}%`} />
           <StatPill label="Hours Remaining" value={remainHrs.toLocaleString()} unit="hrs"
             color={remainHrs<200?C.red:remainHrs<500?C.amber:C.teal}
             sub={`~${remainDays} days at ${(settings.utilisationRate*100).toFixed(0)}% util`} />
@@ -1504,7 +1584,7 @@ function DashboardTab({ stackData, settings, weather, chargeLog, fanHrs, lastCha
             sub={`Avg ${avgHrsPerCharge.toFixed(2)} hrs/charge`} />
           <StatPill label="PAH Status" value={pahBreaching?"BREACHING":"OK"} unit=""
             color={pahBreaching?C.red:C.teal}
-            sub={`Threshold: ${pahThresh.toFixed(1)}C stack`} />
+            sub={`Threshold: ${pahThresh.toFixed(1)}C stack (~${((pahThresh - STACK_TEMP_A) / STACK_TEMP_B).toFixed(1)}C ambient (regression))`} />
         </div>
         {pahBreaching && (
           <div style={{ marginTop:12, padding:"10px 14px", background:TINT.redBg, border:`1px solid ${C.red}`, borderRadius:7, fontSize:12, color:TINT.redText, fontWeight:600 }}>
@@ -1664,9 +1744,8 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onDeleteCharge, lastChangeout
   const plant1Hrs   = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant1").reduce((a,c)=>a+(c.durationHrs||P1_AVG_HRS)*(c.count||1),0);
   const plant2Hrs   = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant2").reduce((a,c)=>a+(c.durationHrs||P2_AVG_HRS)*(c.count||1),0);
   const totalActiveHrs = Math.round((plant1Hrs+plant2Hrs)*10)/10;
-  const stackTempCorrection = settings.stackTempCorrectionC ?? 8;
-  const typicalOpTemp = operativeTemp(settings.typicalTempC, stackTempCorrection);
-  const vocWindow = safeWindowHoursVOC(typicalOpTemp, settings.typicalRH, vocC, settings.naphthaleneFrac);
+  const stackTempCorrection = settings.stackTempCorrectionC ?? 10.3;
+  const vocWindow = safeWindowHoursVOC(settings.typicalTempC, settings.typicalRH, vocC, settings.naphthaleneFrac);
   const remainHrs = Math.max(0, vocWindow - totalActiveHrs);
   const avgHrsPerCharge = (plant1Count+plant2Count) > 0 ? totalActiveHrs/(plant1Count+plant2Count) : (P1_AVG_HRS+P2_AVG_HRS)/2;
   const chargesRemaining = avgHrsPerCharge > 0 ? Math.max(0, Math.floor(remainHrs/avgHrsPerCharge)) : 0;
@@ -1973,7 +2052,6 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC, onArchiveDocume
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfDragOver, setPdfDragOver] = useState(false);
   const [openAnomaly, setOpenAnomaly] = useState(null);
-  const [dismissPahWarning, setDismissPahWarning] = useState(false);
   const [excludeP2Sensitivity, setExcludeP2Sensitivity] = useState(false);
   const missingPah = getMostRecentPeriodWithMissingPAH(stackData);
 
@@ -2046,10 +2124,10 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC, onArchiveDocume
     setForm({ period:"", date:"", activeHrs:"", avgTemp:"", stackTemp:"", avgRH:"", voc:"", pah:"", charges:"", p1Charges:"", p2Charges:"", flowRate_m3hr:"" });
   };
 
-  const stackTempCorrection = settings.stackTempCorrectionC ?? 8;
+  const stackTempCorrection = settings.stackTempCorrectionC ?? 10.3;
   const fitRows = stackData.map(d=>{
     const tOperative = operativeTemp(d.avgTemp, stackTempCorrection);
-    const vocPred = d.voc!=null ? predictVOC(d.activeHrs,tOperative,d.avgRH,vocC) : null;
+    const vocPred = d.voc!=null ? predictVOC(d.activeHrs,d.avgTemp,d.avgRH,vocC) : null;
     const bayesResidual = d.sameCarbon === false && d.voc != null
       ? Math.log(Math.max(d.voc, 0.01)) - (vocC.a * Math.log(Math.max(calcEffectiveHours(d.activeHrs, d.periodStart, d.periodEnd), 1)) + vocC.b * d.avgTemp + vocC.c + ((1 - humidityFactor(d.avgRH)) * 0.6))
       : null;
@@ -2067,13 +2145,13 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC, onArchiveDocume
   const tSeries=[6,10,15,20]; const tColors=[C.teal,C.rund,C.amber,C.red];
   for(let h=100;h<=2000;h+=100){
     const pt={hrs:h};
-    tSeries.forEach(t=>{ pt["voc_"+t]=predictVOC(h,operativeTemp(t, stackTempCorrection),80,vocC); });
+    tSeries.forEach(t=>{ pt["voc_"+t]=predictVOC(h,t,80,vocC); });
     modelLines.push(pt);
   }
 
   return (
     <div>
-      <MissingPAHBanner period={missingPah} dismissed={dismissPahWarning} onDismiss={()=>setDismissPahWarning(true)} />
+      <MissingPAHBanner period={missingPah} />
       <ModelStatusBanner vocC={vocC} pahC={pahC} />
 
       <Card>
@@ -2147,7 +2225,7 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC, onArchiveDocume
           </table>
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
-          P1-P3: same carbon charge (cumulative -- not independent data points). P4-P8: fresh carbon each period. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses T_operative = ambient + correction factor. PAH model uses MCERTS stack temp.
+          P1-P3: same carbon charge (cumulative -- not independent data points). P4-P8: fresh carbon each period. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses raw ambient temperature consistent with calibration basis. PAH model uses MCERTS stack temp.
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>
           Bayes Resid = ln(measured) - ln(Ridge predicted). Sequential Bayesian update on intercept c uses these residuals as observations. Positive mean residual indicates systematic underprediction; Bayesian posterior will shift intercept upward.
@@ -2195,7 +2273,7 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC, onArchiveDocume
           ))}
         </div>
         <div style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:6 }}>
-          Curve labels show ambient temperature. VOC physics is calculated at ambient + {stackTempCorrection.toFixed(1)}C correction.
+          Curve labels show ambient temperature. VOC physics is calculated at raw ambient temperature consistent with the regression calibration basis.
         </div>
       </Card>
 
@@ -2231,7 +2309,7 @@ function StackTestsTab({ stackData, onAdd, settings, vocC, pahC, onArchiveDocume
           <Input label="Avg RH %"   type="number" value={form.avgRH}       onChange={v=>setForm(f=>({...f,avgRH:v}))}       style={{ flex:"1 1 70px"  }} disabled={!canEdit} />
           <Input label="VOC mg/m3"  type="number" step="0.1" value={form.voc}  onChange={v=>setForm(f=>({...f,voc:v}))}       style={{ flex:"1 1 90px"  }} disabled={!canEdit} />
           <Input label="PAH ug/m3"  type="number" step="0.1" value={form.pah}  onChange={v=>setForm(f=>({...f,pah:v}))}       style={{ flex:"1 1 90px"  }} disabled={!canEdit} />
-          <Input label="Stack Discharge Flow (m3/hr) - from report" type="number" step="1" value={form.flowRate_m3hr} onChange={()=>{}} style={{ flex:"1 1 180px" }} disabled={!canEdit} />
+          <Input label="Stack Discharge Flow (m3/hr) - from report" type="number" step="1" value={form.flowRate_m3hr} onChange={v=>setForm(f=>({...f, flowRate_m3hr:v}))} style={{ flex:"1 1 180px" }} disabled={!canEdit} />
         </div>
         {form.flowRate_m3hr!=="" && (parseFloat(form.flowRate_m3hr)<7000 || parseFloat(form.flowRate_m3hr)>12000) && (
           <div style={{ marginBottom:10, padding:"9px 12px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:7, color:TINT.amberText, fontSize:12, fontWeight:700 }}>
@@ -2605,35 +2683,41 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
 // ============================================================
 function TempAnalysisTab({ vocC, pahC, settings }) {
   const nf = settings.naphthaleneFrac;
-  const stackTempCorrection = settings.stackTempCorrectionC ?? 8;
+  const stackTempCorrection = settings.stackTempCorrectionC ?? 10.3;
   const pahThresh500 = pahFailTemp(500, pahC);
   const pahThresh = pahThresh500;
+  var pahAmbientThreshold_C = parseFloat(((pahThresh500 - STACK_TEMP_A) / STACK_TEMP_B).toFixed(1));
+  // ~11.6 C: ambient at which estimateStackTemp reaches the PAH ELV breach stack temperature.
+  // Near-independent of hours. Replaces the previous hardcoded threshold figure.
   const windowChart = [-5,0,5,10,12,15,18,20,25].map(t=>({
     temp:t,
     vocDry:  safeWindowHoursVOC(t,60,vocC,nf),
     vocTyp:  safeWindowHoursVOC(t,80,vocC,nf),
     vocWet:  safeWindowHoursVOC(t,90,vocC,nf),
   }));
-  const SEASON_PAH_AMBIENT_THRESHOLD_C = 17.4;
+  // SEASON_PAH_AMBIENT_THRESHOLD_C removed v1.6.0 -- value was arithmetically incorrect.
+  // Compute live from pahFailTemp(activeHrs, pahC) via regression inverse.
+  // See audit C&G-GAC-2026-AUDIT-001.
+  // seasonRec: climatological reference data for seasonal cards.
+  // tOp is computed at render time: operativeTemp(s.ambT, stackTempCorrection).
+  // Do not add a stored operative-display field -- it goes stale when the correction changes.
   const seasonRec = [
     {
       season: "Winter (Dec-Feb)",
       ambT: 4.5,
       stackT: 15.3,
       rh: 87,
-      tOperativeDisplay: 14.8,
       pahGoverns: false,
       pahNote: "",
-      ambientNote: "Mean 4.5 deg C (Boston 30-yr). T_op 14.8 deg C (4.5 + 10.3 site-measured offset). Well below PAH threshold (~17.4 deg C ambient). VOC saturation is the operative constraint.",
+      ambientNote: "Mean 4.5 deg C (Boston 30-yr). T_op 14.8 deg C (4.5 + 10.3 site-measured offset). Well below the PAH threshold. VOC saturation is the operative constraint.",
     },
     {
       season: "Spring (Mar-May)",
       ambT: 9.6,
       stackT: 20.1,
       rh: 78,
-      tOperativeDisplay: 19.9,
       pahGoverns: false,
-      pahNote: "PAH risk emerging in May (~12.6 deg C ambient / 22.9 deg C T_op). Monitor closely from late April.",
+      pahNote: "PAH risk threshold (~" + pahAmbientThreshold_C.toFixed(1) + " deg C ambient) reached in May (mean 12.6 deg C). Monitor closely from late April.",
       ambientNote: "Mean 9.6 deg C (Mar 6.8, Apr 9.3, May 12.6). T_op 19.9 deg C. VOC governs Mar-Apr. PAH risk threshold approached in May.",
     },
     {
@@ -2641,19 +2725,17 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
       ambT: 16.8,
       stackT: 24.0,
       rh: 75,
-      tOperativeDisplay: 27.1,
       pahGoverns: true,
-      pahNote: "PAH IS THE OPERATIVE CONSTRAINT in summer. Mean ambient 16.8 deg C exceeds PAH threshold of ~17.4 deg C ambient. T_op 27.1 deg C. VOC safe window shown for reference only - PAH model will force changeout or test trigger before VOC ELV is reached under normal summer conditions. Do not use VOC hours figure for summer scheduling.",
-      ambientNote: "Mean 16.8 deg C (Jun 15.4, Jul 17.6, Aug 17.3). Jul average max 22 deg C. PAH exceedance precedent: P4 fresh carbon breach at 22.5 deg C ambient / 27.7 deg C stack. Summer operations require PAH-led scheduling via Forward Forecast PAH model.",
+      pahNote: "PAH IS THE OPERATIVE CONSTRAINT in summer. Mean ambient 16.8 deg C exceeds PAH threshold of ~" + pahAmbientThreshold_C.toFixed(1) + " deg C ambient. T_op 27.1 deg C. VOC safe window shown for reference only - PAH model will force changeout or test trigger before VOC ELV is reached under normal summer conditions. Do not use VOC hours figure for summer scheduling.",
+      ambientNote: "Mean 16.8 deg C (Jun 15.4, Jul 17.6, Aug " + (173/10).toFixed(1) + "). Jul average max 22 deg C. PAH exceedance precedent: P4 fresh carbon breach at 22.5 deg C ambient / 27.7 deg C stack. Summer operations require PAH-led scheduling via Forward Forecast PAH model.",
     },
     {
       season: "Autumn (Sep-Nov)",
       ambT: 11.1,
       stackT: 21.1,
       rh: 85,
-      tOperativeDisplay: 21.4,
       pahGoverns: false,
-      pahNote: "PAH risk possible in September (mean 14.8 deg C ambient / 25.1 deg C T_op - approaching threshold). Monitor September stack temperature closely.",
+      pahNote: "September (mean 14.8 deg C) exceeds the PAH threshold of ~" + pahAmbientThreshold_C.toFixed(1) + " deg C. PAH risk governs September scheduling. October (11.2 deg C) is borderline safe. Monitor closely through October.",
       ambientNote: "Mean 11.1 deg C (Sep 14.8, Oct 11.2, Nov 7.4). September elevated PAH risk. P5 (Aug-Nov, 420 hrs, 9.5 deg C mean) returned VOC 8.4 mg/m3 - well inside ELV at this hours count.",
     },
   ];
@@ -2663,14 +2745,14 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
         <SectionTitle>PAH Temperature Threshold Analysis</SectionTitle>
         <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:14 }}>
           <StatPill label="PAH ELV Threshold" value={pahThresh.toFixed(1)} unit="C stack"
-            color={C.red} sub={`~${(pahThresh-10).toFixed(1)}C ambient equiv.`} />
+            color={C.red} sub={"~" + pahAmbientThreshold_C.toFixed(1) + "C ambient (model-derived)"} />
           <StatPill label="PAH Model R2" value={pahC.r2!=null?pahC.r2.toFixed(3):"default"} unit=""
             color={pahC.r2>0.9?C.teal:C.amber} sub="Temperature-only model" />
           <StatPill label="Uncertainty" value={"x"+Math.exp(pahC.rmse||PAH_RMSE_LOG).toFixed(2)} unit=""
             color={C.blue} sub="1SD multiplicative" />
         </div>
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.75 }}>
-          P7 vs P8 dual-mechanism confirmation: P7 ran 1,387 hrs at 6.1 deg C ambient (T_op 16.4 deg C at +10.3 offset) -- VOC 5.9 mg/m3, PAH 340 ug/m3, both well inside ELV. P8 ran 1,495 hrs at 11.6 deg C ambient (T_op 21.9 deg C) -- VOC 63.9 mg/m3 (3.2x ELV), PAH result outstanding. P4 ran 380 hrs at 22.5 deg C ambient (T_op 32.8 deg C) -- VOC 18.2 mg/m3 (inside ELV), PAH 5,369 ug/m3 (5.4x ELV). This dataset confirms the dual breakthrough mechanism: VOC failure is hours-driven (P8 at modest temperature); PAH failure is temperature-driven (P4 at low hours but high temperature). These are independent failure modes requiring separate scheduling tracks. PAH ambient threshold: ~17.4 deg C (P4 precedent at 22.5 deg C minus +10.3 deg C site offset -- this is a routine warm season threshold, not an extreme outlier). Site-measured offset from Testo 925 spot readings: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C, delta +10.3 deg C. Model uses settings.stackTempCorrectionC for all live calculations; +10.3 deg C noted here as the directly measured site constant pending continuous logging validation.
+          {"P7 vs P8 dual-mechanism confirmation: P7 ran 1,387 hrs at 6.1 deg C ambient (T_op 16.4 deg C at +10.3 offset) -- VOC 5.9 mg/m3, PAH 340 ug/m3, both well inside ELV. P8 ran 1,495 hrs at 11.6 deg C ambient (T_op 21.9 deg C) -- VOC 63.9 mg/m3 (3.2x ELV), PAH result outstanding. P4 ran 380 hrs at 22.5 deg C ambient (T_op 32.8 deg C) -- VOC 18.2 mg/m3 (inside ELV), PAH 5,369 ug/m3 (5.4x ELV). This dataset confirms the dual breakthrough mechanism: VOC failure is hours-driven (P8 at modest temperature); PAH failure is temperature-driven (P4 at low hours but high temperature). These are independent failure modes requiring separate scheduling tracks. PAH ambient threshold: ~" + pahAmbientThreshold_C.toFixed(1) + " deg C (model-derived, v1.6.0). Site-measured offset from Testo 925 spot readings: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C, delta +10.3 deg C. Model uses settings.stackTempCorrectionC for all live calculations; +10.3 deg C noted here as the directly measured site constant pending continuous logging validation."}
         </div>
       </Card>
 
@@ -2723,7 +2805,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
           marginBottom: 12,
           lineHeight: 1.6,
         }}>
-          Ambient values are 30-year climatological means for Boston Lincolnshire PE21 (52.9833N 0.0167W). T_operative uses the site-measured ambient-to-inlet offset of +10.3 deg C from Testo 925 spot readings (pre-bed inlet vs external ambient). RH values are monthly means. VOC safe window is calculated at seasonal mean conditions using the live-calibrated VOC model. Where PAH governs (summer), the VOC figure is shown for reference only and must not be used for scheduling. PAH threshold: approximately 17.4 deg C ambient (P4 precedent: breach at 22.5 deg C ambient with fresh carbon; site-measured offset +10.3 deg C).
+          {"Ambient values are 30-year climatological means for Boston Lincolnshire PE21 (52.9833N 0.0167W). T_operative uses the site-measured ambient-to-inlet offset of +10.3 deg C from Testo 925 spot readings (pre-bed inlet vs external ambient). RH values are monthly means. VOC safe window is calculated at seasonal mean conditions using the live-calibrated VOC model. Where PAH governs (summer), the VOC figure is shown for reference only and must not be used for scheduling. PAH threshold: approximately " + pahAmbientThreshold_C.toFixed(1) + " deg C ambient (model-derived by regression inverse)."}
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {seasonRec.map((s, i) => {
@@ -2732,7 +2814,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
               s.ambT, s.rh, vocC, nf
             );
             const pahOk = s.pahGoverns === false &&
-              s.ambT < SEASON_PAH_AMBIENT_THRESHOLD_C;
+              s.ambT < pahAmbientThreshold_C;
             const borderColor = s.pahGoverns
               ? C.red
               : vocW < 500
@@ -2851,7 +2933,18 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
           lineHeight: 1.6,
           fontWeight: 700,
         }}>
-          SUMMER SCHEDULING NOTE: Between approximately June and August, mean Boston ambient temperatures (15-18 deg C) routinely exceed the PAH risk threshold of ~17.4 deg C ambient. Under these conditions, the PAH model in the Forward Forecast tab is the operative scheduling tool. The VOC safe window shown above for summer is struck through to indicate it is not the scheduling basis. P4 (Jun-Jul 2025, fresh carbon, 22.5 deg C ambient) confirmed PAH exceedance at 5,369 ug/m3 while VOC remained inside ELV at 18.2 mg/m3. This is the definitive site evidence that PAH governs in summer, not VOC saturation.
+          {"PAH SCHEDULING NOTE (May-September): Model-derived PAH ambient risk " +
+          "threshold is ~" + pahAmbientThreshold_C.toFixed(1) + " deg C " +
+          "(stack temp regression: 0.685T + 13.506 = ~21.4 deg C breach stack temp, " +
+          "inverted for ambient). This threshold is exceeded from late April through " +
+          "September at Boston climatological means: May 12.6 deg C, Jun 15.4 deg C, " +
+          "Jul 17.6 deg C, Aug " + (173/10).toFixed(1) + " deg C, Sep 14.8 deg C. " +
+          "PAH governs scheduling across this full window, not June-August only. " +
+          "The previous threshold figure was arithmetically erroneous " +
+          "and has been removed in model v1.6.0 (audit C&G-GAC-2026-AUDIT-001). " +
+          "P4 evidence: fresh carbon, 380 hrs, stack 27.7 deg C -- " +
+          "PAH 5,369 ug/m3 (5.4x ELV), VOC 18.2 mg/m3 (inside ELV). " +
+          "PAH governs in warm conditions independent of carbon age."}
         </div>
       </Card>
     </div>
@@ -2861,7 +2954,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
 // ============================================================
 // FORWARD FORECAST TAB
 // ============================================================
-function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChangeoutDateChange, vocC, pahC, thermalStats, canEdit }) {
+function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeout, onChangeoutDateChange, vocC, pahC, thermalStats, canEdit }) {
   const today = useMemo(()=>new Date(),[]);
   const [mode, setMode] = useState("seasonal");
   const [flatTemp, setFlatTemp] = useState(settings.typicalTempC);
@@ -2959,7 +3052,7 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
   const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const exportSchedule = () => {
     const rmse = vocUncertaintyMultiplier(vocC);
-    var calibPeriods = INITIAL_STACK_DATA.filter(function(d) {
+    var calibPeriods = stackData.filter(function(d) {
       return d.sameCarbon === false && d.voc != null;
     });
     var calibMinHrs = Math.min.apply(null, calibPeriods.map(function(d) { return d.activeHrs; }));
@@ -3057,10 +3150,7 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
             }}>
               {predictVOC(
                 startActiveHrs,
-                operativeTemp(
-                  getScenarioAmbientTemp(0, today, mode, flatTemp, monthlyTemps, liveTemps),
-                  activeAmbientToInletOffset
-                ),
+                getScenarioAmbientTemp(0, today, mode, flatTemp, monthlyTemps, liveTemps),
                 settings.useConservativeRH ? 90 : 80,
                 vocC
               ).toFixed(1)} mg/m3 (predicted)
@@ -3071,6 +3161,26 @@ function ForwardForecastTab({ settings, onSettingChange, lastChangeout, onChange
           </div>
           <Input label="Utilisation Rate (%)" type="number" step="1" min={0} max={100} value={utilisationPct} onChange={v=>onSettingChange("utilisationRate",Math.max(0,Math.min(100,v||0))/100)} style={{ flex:"1 1 170px" }} disabled={!canEdit} />
         </div>
+        {(function() {
+          var todayStr = new Date().toISOString().slice(0, 10);
+          var cfg = getFanConfigAtDate(todayStr);
+          if (cfg && cfg.label && cfg.label.toLowerCase().indexOf("reduced") >= 0) {
+            return (
+              <div style={{ marginTop:10, padding:"12px 14px",
+                border:"2px solid " + C.amber, borderRadius:8,
+                background:TINT.amberBg, color:TINT.amberText,
+                fontSize:12, fontWeight:700, lineHeight:1.5 }}>
+                FAN CONFIG B ACTIVE: Extraction fan running at reduced speed
+                ({cfg.fanRPM.toLocaleString()} rpm, approx {cfg.typicalStackDischargeFlow_m3hr.toLocaleString()} m3/hr).
+                VOC predictions use raw active hours without flow correction.
+                For precise scheduling during Config B, apply calcEffectiveHours()
+                to active hours manually before interpreting the VOC safe window.
+                PAH model is unaffected.
+              </div>
+            );
+          }
+          return null;
+        })()}
         <div style={{ fontSize:11, color:C.muted }}>Leave cumulative active hours as the auto value or type an override. Current VOC anchor scaling has been removed; the model prediction at start is shown for audit trail only.</div>
       </Card>
 
@@ -3658,7 +3768,7 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
           WJ fraction applied as hours scaling: higher fraction = faster capacity consumption = fewer charges to failure. 53% = plant baseline. Inlet VOC monitoring excluded (would trigger BAT 45 EA continuous stack monitoring obligation).
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
-          Empirical uplift from ambient to carbon bed face temperature. Derived from P1-P8 MCERTS stack test data (avg delta +8C). Update when continuous bed-face logging is available.
+          Site-measured ambient-to-inlet offset: +10.3 deg C (Testo 925, 2026-06-18: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C). Updated from +8.0 deg C interim value. Applies to PAH scheduling and T_operative display only. VOC pathway uses raw ambient temperature consistent with calibration basis.
         </div>
       </Card>
 
@@ -3702,7 +3812,7 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
       <Card>
         <SectionTitle>Model Architecture</SectionTitle>
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.8 }}>
-          <strong>VOC:</strong> Calibrated using Ridge L2 bivariate regression (ln(active hrs), ambient temperature). In-sample R2 and leave-one-out cross-validated R2 are both computed and displayed. LOO CV R2 is the operative reliability metric for scheduling decisions - it estimates predictive accuracy on periods not used for fitting. In-sample R2 is retained for audit trail purposes only. ln(VOC) = a*ln(rawActiveHrs) + b*T_operative + c + humidityPenalty. The b coefficient ({vocC.b.toFixed(3)}) was calibrated against ambient temperature (avgTemp from MCERTS records), not T_operative. The +{(settings.stackTempCorrectionC ?? 8).toFixed(1)}C stack temperature correction is applied at prediction time only (T_operative = ambient + correction). This is internally consistent provided the correction factor is constant across all calibration periods, which the +8C interim assumption achieves. If a period-specific correction were used, the model would require recalibration. Deferred until continuous bed-face temperature logging data is available. WJ fraction scales the safeWindowHoursVOC output only - it does not alter the regression prediction input, keeping coefficients consistent with calibration data. The WJ bed life estimate is a theoretical upper bound (Dubinin-Radushkevich/Polanyi steady-state) with no calibrated relationship to observed P1-P8 breakthrough events. It must not be used as a compliance scheduling limit. The VOC regression safe window is the operative limit. Uncertainty band x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} shown on forecast.
+          <strong>VOC:</strong> Calibrated using Ridge L2 bivariate regression (ln(active hrs), ambient temperature). In-sample R2 and leave-one-out cross-validated R2 are both computed and displayed. LOO CV R2 is the operative reliability metric for scheduling decisions - it estimates predictive accuracy on periods not used for fitting. In-sample R2 is retained for audit trail purposes only. ln(VOC) = a*ln(rawActiveHrs) + b*T_ambient + c + humidityPenalty. The b coefficient ({vocC.b.toFixed(3)}) was calibrated against ambient temperature (avgTemp from MCERTS records), not T_operative. Correction v1.6.0: the b coefficient is applied at raw ambient temperature at all VOC call sites, restoring consistency with its calibration basis against MCERTS avgTemp. The ambient-to-inlet offset is retained in the PAH pathway only. Documented under audit C&G-GAC-2026-AUDIT-001 (2026-06-18). No EA recalibration notification required: this restores internal consistency rather than changing model physics or coefficients. WJ fraction scales the safeWindowHoursVOC output only - it does not alter the regression prediction input, keeping coefficients consistent with calibration data. The WJ bed life estimate is a theoretical upper bound (Dubinin-Radushkevich/Polanyi steady-state) with no calibrated relationship to observed P1-P8 breakthrough events. It must not be used as a compliance scheduling limit. The VOC regression safe window is the operative limit. Uncertainty band x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} shown on forecast.
           <br /><br />
           <strong>Bayesian Sequential Updating (VOC Intercept Refinement):</strong>{" "}
           {vocC.bayesianActive
@@ -3729,6 +3839,24 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
           <strong>Single-component WJ proxy:</strong> Naphthalene is used as a single-component proxy compound for Wheeler-Jonas bed capacity estimation. This is a conservative simplification - no multi-component competitive adsorption model is implemented. The {(settings.naphthaleneFrac*100).toFixed(0)}% vapour-phase fraction is plant-calibrated against P4-P8 MCERTS results.
           <br /><br />
           <strong>Cycles to failure:</strong> remainingHrs / avgHrsPerCharge (from charge log). Rolling 28-day charge rate converts hours to days.
+          <br /><br />
+          {"CHANGELOG v1.6.0 (2026-06-18) -- Audit C&G-GAC-2026-AUDIT-001:\n" +
+          "E01: VOC pathway restored to ambient temperature basis. The b coefficient\n" +
+          "was calibrated against MCERTS ambient temperature (d.avgTemp). All predictVOC\n" +
+          "and safeWindowHoursVOC calls now correctly pass ambient temperature. The\n" +
+          "ambient-to-inlet offset applies to PAH scheduling only. No recalibration required.\n" +
+          "E03: flowRate_m3hr onChange handler fixed (was a silent no-op).\n" +
+          "E04: Config A flow assumption documented in predictVOC. Config B active warning added.\n" +
+          "E05: Default ambient-to-inlet offset updated 8.0 -> 10.3 deg C (Testo 925 validated).\n" +
+          "PAH ambient back-calculation now uses regression inverse not hardcoded -10.\n" +
+          "W01: Thermal stats now uses sample variance (n-1) not population variance (n).\n" +
+          "W02: Vestigial stored operative-display field removed from seasonRec.\n" +
+          "W03: LOO CV R2 instability messaging improved. Bayesian vs Ridge comparison added.\n" +
+          "W04: exportSchedule now references live stackData not INITIAL_STACK_DATA.\n" +
+          "W05: Erroneous PAH ambient threshold replaced with live computed value\n" +
+          "(~11.6 deg C). PAH risk window corrected: May-September not June-August only.\n" +
+          "W07: MissingPAHBanner dismiss button removed. Banner clears on data entry only.\n" +
+          "W08: Bayesian vs Ridge reference comparison added to ModelStatusBanner."}
           <br /><br />
           Permit EPR/A2/1 | VOC ELV {VOC_ELV} mg/m3 | PAH ELV {PAH_ELV} ug/m3 | STS BREF BAT 51/52 | Decision (EU) 2020/2009
         </div>
@@ -3825,7 +3953,7 @@ export default function App() {
   const chargeActiveHrs = currentPeriodChargeLog.length > 0 ? Math.max(appLogChargeHrs - downtimeHrs, 0) : appFallbackHrs;
   const appAmbientTemp = weather ? weather.temperature_2m : settings.typicalTempC;
   const appRH = settings.useConservativeRH ? 90 : (weather ? weather.relative_humidity_2m : settings.typicalRH);
-  const appOperativeTemp = operativeTemp(appAmbientTemp, settings.stackTempCorrectionC ?? 8);
+  const appOperativeTemp = operativeTemp(appAmbientTemp, settings.stackTempCorrectionC ?? 10.3);
   const thermalStats = useMemo(()=>computeThermalStats(thermalLog), [thermalLog]);
 
   useEffect(()=>{
@@ -3915,8 +4043,8 @@ export default function App() {
       <div style={{ maxWidth:900, margin:"0 auto", padding:"18px 16px" }}>
         <ProcessSchematic
           activeHrs={chargeActiveHrs}
-          vocWindowHrs={safeWindowHoursVOC(appOperativeTemp, appRH, vocC, settings.naphthaleneFrac)}
-          tvocPredicted={predictVOC(chargeActiveHrs, appOperativeTemp, appRH, vocC)}
+          vocWindowHrs={safeWindowHoursVOC(appAmbientTemp, appRH, vocC, settings.naphthaleneFrac)}
+          tvocPredicted={predictVOC(chargeActiveHrs, appAmbientTemp, appRH, vocC)}
           pahPredicted={predictPAH(estimateStackTemp(appAmbientTemp), chargeActiveHrs, pahC)}
           stackTempC={estimateStackTemp(appAmbientTemp)}
         />
@@ -3930,7 +4058,7 @@ export default function App() {
         {activeTab==="dashboard"    && <DashboardTab    stackData={stackData} settings={settings} weather={weather} chargeLog={chargeLog} fanHrs={fanHrs} lastChangeout={lastChangeout} downtimeHrs={downtimeHrs} onDowntime={setDowntimeHrs} onFanHrs={setFanHrs} vocC={vocC} pahC={pahC} canEdit={canEdit} />}
         {activeTab==="cycles"       && <ChargeCyclesTab chargeLog={chargeLog} onAddCharge={c=>setChargeLog(l=>[...l,c])} onDeleteCharge={id=>setChargeLog(l=>l.filter(c=>c.id!==id))} lastChangeout={lastChangeout} settings={settings} vocC={vocC} canEdit={canEdit} />}
         {activeTab==="stack"        && <StackTestsTab   stackData={stackData} onAdd={e=>setStackDataExtra(d=>[...d,e])} settings={settings} vocC={vocC} pahC={pahC} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
-        {activeTab==="forecast"     && <ForwardForecastTab settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} />}
+        {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} />}
         {activeTab==="coa"          && <CoATab coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="documents"    && <DocumentLibraryTab adminData={adminData} isAdmin={isAdmin} onDownloadDocument={downloadDocument} />}
         {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} />}
