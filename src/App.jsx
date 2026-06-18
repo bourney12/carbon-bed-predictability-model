@@ -576,6 +576,10 @@ const BOSTON_MONTHLY_TEMPS = [
   4.2, 4.5, 6.8, 9.3, 12.6, 15.4, 17.6, 17.3, 14.8, 11.2, 7.4, 4.8
 ];
 
+const BOSTON_MONTHLY_RH = [
+  88, 86, 83, 78, 74, 74, 74, 76, 82, 85, 87, 87
+];
+
 function isoDateFromDate(date) {
   return date.toISOString().slice(0, 10);
 }
@@ -2610,11 +2614,48 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
     vocTyp:  safeWindowHoursVOC(operativeTemp(t, stackTempCorrection),80,vocC,nf),
     vocWet:  safeWindowHoursVOC(operativeTemp(t, stackTempCorrection),90,vocC,nf),
   }));
+  const SEASON_PAH_AMBIENT_THRESHOLD_C = 17.4;
   const seasonRec = [
-    { season:"Winter (Dec-Feb)", ambT:5,  stackT:15, rh:85 },
-    { season:"Spring (Mar-May)", ambT:10, stackT:20, rh:78 },
-    { season:"Summer (Jun-Aug)", ambT:20, stackT:30, rh:72 },
-    { season:"Autumn (Sep-Nov)", ambT:12, stackT:22, rh:82 },
+    {
+      season: "Winter (Dec-Feb)",
+      ambT: 4.5,
+      stackT: 15.3,
+      rh: 87,
+      tOperativeDisplay: 14.8,
+      pahGoverns: false,
+      pahNote: "",
+      ambientNote: "Mean 4.5 deg C (Boston 30-yr). T_op 14.8 deg C (4.5 + 10.3 site-measured offset). Well below PAH threshold (~17.4 deg C ambient). VOC saturation is the operative constraint.",
+    },
+    {
+      season: "Spring (Mar-May)",
+      ambT: 9.6,
+      stackT: 20.1,
+      rh: 78,
+      tOperativeDisplay: 19.9,
+      pahGoverns: false,
+      pahNote: "PAH risk emerging in May (~12.6 deg C ambient / 22.9 deg C T_op). Monitor closely from late April.",
+      ambientNote: "Mean 9.6 deg C (Mar 6.8, Apr 9.3, May 12.6). T_op 19.9 deg C. VOC governs Mar-Apr. PAH risk threshold approached in May.",
+    },
+    {
+      season: "Summer (Jun-Aug)",
+      ambT: 16.8,
+      stackT: 24.0,
+      rh: 75,
+      tOperativeDisplay: 27.1,
+      pahGoverns: true,
+      pahNote: "PAH IS THE OPERATIVE CONSTRAINT in summer. Mean ambient 16.8 deg C exceeds PAH threshold of ~17.4 deg C ambient. T_op 27.1 deg C. VOC safe window shown for reference only - PAH model will force changeout or test trigger before VOC ELV is reached under normal summer conditions. Do not use VOC hours figure for summer scheduling.",
+      ambientNote: "Mean 16.8 deg C (Jun 15.4, Jul 17.6, Aug 17.3). Jul average max 22 deg C. PAH exceedance precedent: P4 fresh carbon breach at 22.5 deg C ambient / 27.7 deg C stack. Summer operations require PAH-led scheduling via Forward Forecast PAH model.",
+    },
+    {
+      season: "Autumn (Sep-Nov)",
+      ambT: 11.1,
+      stackT: 21.1,
+      rh: 85,
+      tOperativeDisplay: 21.4,
+      pahGoverns: false,
+      pahNote: "PAH risk possible in September (mean 14.8 deg C ambient / 25.1 deg C T_op - approaching threshold). Monitor September stack temperature closely.",
+      ambientNote: "Mean 11.1 deg C (Sep 14.8, Oct 11.2, Nov 7.4). September elevated PAH risk. P5 (Aug-Nov, 420 hrs, 9.5 deg C mean) returned VOC 8.4 mg/m3 - well inside ELV at this hours count.",
+    },
   ];
   return (
     <div>
@@ -2629,7 +2670,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
             color={C.blue} sub="1SD multiplicative" />
         </div>
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.75 }}>
-          P7 vs P8 confirmation: 1,387 hrs at 6.1C/17.5C stack = VOC 5.9 mg/m3 (PASS). 1,495 hrs at 11.6C/23.0C stack = VOC 63.9 mg/m3 (FAIL, 3.2x ELV). VOC safe-hours curves use T_operative = ambient + {stackTempCorrection.toFixed(1)}C correction.
+          P7 vs P8 dual-mechanism confirmation: P7 ran 1,387 hrs at 6.1 deg C ambient (T_op 16.4 deg C at +10.3 offset) -- VOC 5.9 mg/m3, PAH 340 ug/m3, both well inside ELV. P8 ran 1,495 hrs at 11.6 deg C ambient (T_op 21.9 deg C) -- VOC 63.9 mg/m3 (3.2x ELV), PAH result outstanding. P4 ran 380 hrs at 22.5 deg C ambient (T_op 32.8 deg C) -- VOC 18.2 mg/m3 (inside ELV), PAH 5,369 ug/m3 (5.4x ELV). This dataset confirms the dual breakthrough mechanism: VOC failure is hours-driven (P8 at modest temperature); PAH failure is temperature-driven (P4 at low hours but high temperature). These are independent failure modes requiring separate scheduling tracks. PAH ambient threshold: ~17.4 deg C (P4 precedent at 22.5 deg C minus +10.3 deg C site offset -- this is a routine warm season threshold, not an extreme outlier). Site-measured offset from Testo 925 spot readings: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C, delta +10.3 deg C. Model uses settings.stackTempCorrectionC for all live calculations; +10.3 deg C noted here as the directly measured site constant pending continuous logging validation.
         </div>
       </Card>
 
@@ -2662,22 +2703,148 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
       </Card>
 
       <Card>
-        <SectionTitle>Seasonal Summary (Live Calibration)</SectionTitle>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-          {seasonRec.map((s,i)=>{
-            const vocW = safeWindowHoursVOC(operativeTemp(s.ambT, stackTempCorrection), s.rh, vocC, nf);
-            const pahOk = s.stackT < pahFailTemp(500, pahC);
-            const rc = !pahOk ? C.red : vocW < 400 ? C.red : vocW < 800 ? C.amber : vocW < 1200 ? C.gold : C.teal;
+        <SectionTitle>
+          Seasonal Summary -- Boston Lincolnshire Site-Calibrated
+        </SectionTitle>
+        <div style={{
+          padding: "9px 12px",
+          background: TINT.blueBg,
+          border: "1px solid " + C.blue,
+          borderRadius: 7,
+          fontSize: 11,
+          color: TINT.blueText,
+          marginBottom: 12,
+          lineHeight: 1.6,
+        }}>
+          Ambient values are 30-year climatological means for Boston Lincolnshire PE21 (52.9833N 0.0167W). T_operative uses the site-measured ambient-to-inlet offset of +10.3 deg C from Testo 925 spot readings (pre-bed inlet vs external ambient). RH values are monthly means. VOC safe window is calculated at seasonal mean conditions using the live-calibrated VOC model. Where PAH governs (summer), the VOC figure is shown for reference only and must not be used for scheduling. PAH threshold: approximately 17.4 deg C ambient (P4 precedent: breach at 22.5 deg C ambient with fresh carbon; site-measured offset +10.3 deg C).
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {seasonRec.map((s, i) => {
+            const tOp = operativeTemp(s.ambT, stackTempCorrection);
+            const vocW = safeWindowHoursVOC(
+              tOp, s.rh, vocC, nf
+            );
+            const pahOk = s.pahGoverns === false &&
+              s.ambT < SEASON_PAH_AMBIENT_THRESHOLD_C;
+            const borderColor = s.pahGoverns
+              ? C.red
+              : vocW < 500
+              ? C.red
+              : vocW < 900
+              ? C.amber
+              : vocW < 1300
+              ? C.gold
+              : C.teal;
             return (
-              <div key={i} style={{ flex:"1 1 180px", background:C.ivory, border:`2px solid ${rc}30`, borderRadius:10, padding:"14px 16px" }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.ink, marginBottom:4 }}>{s.season}</div>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>{s.ambT}C amb | {s.stackT}C stack | {s.rh}% RH</div>
-                <div style={{ fontSize:13, fontFamily:MONO, fontWeight:700, color:rc, marginBottom:4 }}>{vocW.toLocaleString()} hrs VOC</div>
-                <div style={{ fontSize:11, color:pahOk?C.teal:C.red, fontWeight:600 }}>PAH: {pahOk?"OK":"THRESHOLD EXCEEDED"}</div>
-                <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>~{Math.round(vocW/(24*0.9))} days at 90% util</div>
+              <div
+                key={i}
+                style={{
+                  flex: "1 1 200px",
+                  background: C.ivory,
+                  border: "2px solid " + borderColor + "40",
+                  borderLeft: "4px solid " + borderColor,
+                  borderRadius: 7,
+                  padding: "14px 16px",
+                }}
+              >
+                <div style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: C.ink,
+                  marginBottom: 4,
+                }}>
+                  {s.season}
+                </div>
+                <div style={{
+                  fontSize: 11,
+                  color: C.muted,
+                  marginBottom: 6,
+                  lineHeight: 1.45,
+                }}>
+                  Ambient {s.ambT} deg C | T_op {tOp.toFixed(1)} deg C
+                  | RH {s.rh}%
+                </div>
+                <div style={{
+                  fontSize: 13,
+                  fontFamily: MONO,
+                  fontWeight: 700,
+                  color: s.pahGoverns ? C.muted : borderColor,
+                  marginBottom: 4,
+                  textDecoration: s.pahGoverns ? "line-through" : "none",
+                }}>
+                  {vocW.toLocaleString()} hrs VOC
+                </div>
+                {s.pahGoverns && (
+                  <div style={{
+                    fontSize: 11,
+                    color: C.red,
+                    fontWeight: 800,
+                    marginBottom: 4,
+                  }}>
+                    PAH GOVERNS -- VOC figure not operative
+                  </div>
+                )}
+                <div style={{
+                  fontSize: 11,
+                  color: pahOk ? C.teal : C.amber,
+                  fontWeight: 600,
+                  marginBottom: 6,
+                }}>
+                  PAH: {s.pahGoverns
+                    ? "DOMINANT CONSTRAINT"
+                    : s.pahNote
+                    ? "MONITOR"
+                    : "LOW RISK"}
+                </div>
+                {!s.pahGoverns && (
+                  <div style={{
+                    fontSize: 11,
+                    color: C.muted,
+                    marginBottom: 4,
+                  }}>
+                    ~{Math.round(vocW / (24 * 0.9))} days at 90% util
+                  </div>
+                )}
+                <div style={{
+                  fontSize: 10,
+                  color: C.muted,
+                  marginTop: 6,
+                  lineHeight: 1.45,
+                  borderTop: "1px solid " + C.border,
+                  paddingTop: 6,
+                }}>
+                  {s.ambientNote}
+                </div>
+                {s.pahNote && (
+                  <div style={{
+                    fontSize: 10,
+                    color: s.pahGoverns ? C.red : TINT.amberText,
+                    marginTop: 6,
+                    padding: "5px 7px",
+                    background: s.pahGoverns ? TINT.redBg : TINT.amberBg,
+                    borderRadius: 5,
+                    lineHeight: 1.45,
+                    fontWeight: 600,
+                  }}>
+                    {s.pahNote}
+                  </div>
+                )}
               </div>
             );
           })}
+        </div>
+        <div style={{
+          marginTop: 12,
+          padding: "10px 14px",
+          background: TINT.redBg,
+          border: "1px solid " + C.red,
+          borderRadius: 7,
+          fontSize: 11,
+          color: TINT.redText,
+          lineHeight: 1.6,
+          fontWeight: 700,
+        }}>
+          SUMMER SCHEDULING NOTE: Between approximately June and August, mean Boston ambient temperatures (15-18 deg C) routinely exceed the PAH risk threshold of ~17.4 deg C ambient. Under these conditions, the PAH model in the Forward Forecast tab is the operative scheduling tool. The VOC safe window shown above for summer is struck through to indicate it is not the scheduling basis. P4 (Jun-Jul 2025, fresh carbon, 22.5 deg C ambient) confirmed PAH exceedance at 5,369 ug/m3 while VOC remained inside ELV at 18.2 mg/m3. This is the definitive site evidence that PAH governs in summer, not VOC saturation.
         </div>
       </Card>
     </div>
