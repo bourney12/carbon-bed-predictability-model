@@ -2610,9 +2610,9 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
   const pahThresh = pahThresh500;
   const windowChart = [-5,0,5,10,12,15,18,20,25].map(t=>({
     temp:t,
-    vocDry:  safeWindowHoursVOC(operativeTemp(t, stackTempCorrection),60,vocC,nf),
-    vocTyp:  safeWindowHoursVOC(operativeTemp(t, stackTempCorrection),80,vocC,nf),
-    vocWet:  safeWindowHoursVOC(operativeTemp(t, stackTempCorrection),90,vocC,nf),
+    vocDry:  safeWindowHoursVOC(t,60,vocC,nf),
+    vocTyp:  safeWindowHoursVOC(t,80,vocC,nf),
+    vocWet:  safeWindowHoursVOC(t,90,vocC,nf),
   }));
   const SEASON_PAH_AMBIENT_THRESHOLD_C = 17.4;
   const seasonRec = [
@@ -2699,7 +2699,14 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
             </div>
           ))}
         </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>WJ fraction {(nf*100).toFixed(0)}% applied. Higher fraction = shorter window. Curve x-axis shows ambient; calculations use ambient + {stackTempCorrection.toFixed(1)}C correction. <span style={{ color:C.amber, fontWeight:700 }}>Conservative scenario: RH 90% curve.</span></div>
+        <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
+          WJ fraction {(nf*100).toFixed(0)}% applied. Higher fraction = shorter window.
+          {" "}Safe window is calculated at ambient temperature, consistent with the regression calibration
+          basis (coefficient b was fitted against MCERTS ambient temperature measurements).
+          {" "}T_operative (ambient + {stackTempCorrection.toFixed(1)}C correction) is shown on the seasonal
+          cards for operational reference only and is not used in the inversion calculation.
+          {" "}<span style={{ color:C.amber, fontWeight:700 }}>Conservative compliance posture: RH 90% curve.</span>
+        </div>
       </Card>
 
       <Card>
@@ -2722,7 +2729,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
           {seasonRec.map((s, i) => {
             const tOp = operativeTemp(s.ambT, stackTempCorrection);
             const vocW = safeWindowHoursVOC(
-              tOp, s.rh, vocC, nf
+              s.ambT, s.rh, vocC, nf
             );
             const pahOk = s.pahGoverns === false &&
               s.ambT < SEASON_PAH_AMBIENT_THRESHOLD_C;
