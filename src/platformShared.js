@@ -1,12 +1,13 @@
 export const PERSISTED_STATE_KEYS = [
   "cgb_chargeLog",
   "cgb_coaData",
+  "cgb_carbonCoaData",
   "cgb_settings",
   "cgb_lastChangeout",
   "cgb_stackDataExtra",
   "cgb_downtimeHrs",
-  "cgb_fanHrs",
   "cgb_thermalLog",
+  "cgb_loggerLog",
 ];
 
 export function createDefaultSettings() {
@@ -33,11 +34,12 @@ export function createDefaultPlatformState() {
   return {
     cgb_stackDataExtra: [],
     cgb_coaData: [],
+    cgb_carbonCoaData: [],
     cgb_chargeLog: [],
     cgb_lastChangeout: "2026-03-20",
     cgb_downtimeHrs: 0,
-    cgb_fanHrs: 0,
     cgb_thermalLog: [],
+    cgb_loggerLog: [],
     cgb_settings: createDefaultSettings(),
   };
 }
