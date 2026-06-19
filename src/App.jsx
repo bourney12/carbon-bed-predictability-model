@@ -65,7 +65,7 @@ const P2_AVG_HRS = 7.84;    // hrs/charge  Plant 2 (blended average, all product
 // Pre-bed inlet 22.7 deg C, external ambient 12.4 deg C.
 // Replaces the inferred +8 deg C interim value used before site measurement.
 const FALLBACK_AMBIENT_TO_INLET_OFFSET_C = 10.3;
-const PLANT_STATES = ["Impregnating","Draining","Conditioning","Idle","Maintenance","Steaming"];
+const PLANT_STATES = ["Not running","Raising/holding air pressure","Filling","Pressing","Emptying","Raising vacuum","Holding vacuum"];
 const EMPTY_THERMAL_LOG_ENTRY = {
   id: "",
   timestamp: "",
