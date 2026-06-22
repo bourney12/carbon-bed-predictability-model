@@ -24,6 +24,7 @@ export function createDefaultSettings() {
     preTestBufferActiveHrs: 150,
     vocRiskWeight: 0.55,
     useConservativeRH: true,
+    useSiteMeasuredThermalOffset: false,
     isSameCarbonCharge: false,
     batReviewDate: new Date().toISOString().slice(0, 10),
     batReviewedBy: "",
