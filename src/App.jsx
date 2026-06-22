@@ -1232,9 +1232,16 @@ function usePlatformDocument(onSaved, enabled) {
     storage: null,
   });
   const pendingSavesRef = useRef(0);
+  const platformStateRef = useRef(platformState);
+
+  useEffect(()=>{
+    platformStateRef.current = platformState;
+  }, [platformState]);
 
   const applyServerDocument = useCallback(doc => {
-    setPlatformState(doc && doc.state ? doc.state : createDefaultPlatformState());
+    const nextState = doc && doc.state ? doc.state : createDefaultPlatformState();
+    platformStateRef.current = nextState;
+    setPlatformState(nextState);
     setPlatformMeta(prev => ({
       ...prev,
       ready: true,
@@ -1296,17 +1303,13 @@ function usePlatformDocument(onSaved, enabled) {
   }, [applyServerDocument, onSaved]);
 
   const updateKey = useCallback((key, nextValueOrUpdater) => {
-    let changed = false;
-    let nextValue;
-    setPlatformState(prev => {
-      nextValue = resolveStateUpdate(nextValueOrUpdater, prev[key]);
-      if (Object.is(prev[key], nextValue)) return prev;
-      changed = true;
-      return { ...prev, [key]: nextValue };
-    });
-    if (changed) {
-      void persistKey(key, nextValue);
-    }
+    const currentState = platformStateRef.current || createDefaultPlatformState();
+    const nextValue = resolveStateUpdate(nextValueOrUpdater, currentState[key]);
+    if (Object.is(currentState[key], nextValue)) return;
+    const nextState = { ...currentState, [key]: nextValue };
+    platformStateRef.current = nextState;
+    setPlatformState(nextState);
+    void persistKey(key, nextValue);
   }, [persistKey]);
 
   const exportBackup = useCallback(async () => {
