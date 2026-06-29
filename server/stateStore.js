@@ -24,6 +24,7 @@ const SESSION_TTL_HOURS = Math.max(1, parseInt(process.env.CARBON_PLATFORM_SESSI
 const MAX_AUDIT_EVENTS = 2000;
 const MAX_DOCUMENTS = 1000;
 const MAX_PROCESSED_IMPORTS = 200;
+const MAX_SNAPSHOTS = Math.max(20, parseInt(process.env.CARBON_PLATFORM_MAX_SNAPSHOTS || "200", 10));
 
 function pbkdf2Hash(password, salt) {
   return crypto.pbkdf2Sync(password, salt, 120000, 32, "sha256").toString("hex");
@@ -493,6 +494,23 @@ export class PlatformStateStore {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const name = `${stamp}-${source}.json`;
     await fsp.writeFile(path.join(SNAPSHOT_DIR, name), JSON.stringify(this.envelope, null, 2));
+    await this.pruneSnapshots();
+  }
+
+  async pruneSnapshots() {
+    const entries = await fsp.readdir(SNAPSHOT_DIR, { withFileTypes: true });
+    const files = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const fullPath = path.join(SNAPSHOT_DIR, entry.name);
+      const stat = await fsp.stat(fullPath);
+      files.push({ fullPath, mtimeMs: stat.mtimeMs });
+    }
+    files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const stale = files.slice(MAX_SNAPSHOTS);
+    for (const file of stale) {
+      await fsp.unlink(file.fullPath);
+    }
   }
 
   async processChargeImports(actor = null) {
@@ -501,7 +519,6 @@ export class PlatformStateStore {
     const files = (await fsp.readdir(CHARGE_INBOX_DIR)).filter(name => name.toLowerCase().endsWith(".csv")).sort();
     if (files.length === 0) {
       charges.lastSummary = charges.lastSummary || "No automated charge imports yet.";
-      await this.flush("charge-import-scan");
       return this.getPublicState();
     }
     let changed = false;
