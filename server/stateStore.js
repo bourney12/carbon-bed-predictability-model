@@ -26,6 +26,12 @@ const MAX_DOCUMENTS = 1000;
 const MAX_PROCESSED_IMPORTS = 200;
 const MAX_SNAPSHOTS = Math.max(20, parseInt(process.env.CARBON_PLATFORM_MAX_SNAPSHOTS || "200", 10));
 
+function isDiskFullError(error) {
+  if (!error) return false;
+  return error.code === "ERR_SQLITE_ERROR" &&
+    (error.errcode === 13 || String(error.errstr || "").toLowerCase().includes("disk is full"));
+}
+
 function pbkdf2Hash(password, salt) {
   return crypto.pbkdf2Sync(password, salt, 120000, 32, "sha256").toString("hex");
 }
@@ -178,6 +184,7 @@ export class PlatformStateStore {
     await fsp.mkdir(CHARGE_INBOX_DIR, { recursive: true });
     await fsp.mkdir(CHARGE_ARCHIVE_DIR, { recursive: true });
     await fsp.mkdir(DOCUMENT_ROOT, { recursive: true });
+    await this.pruneSnapshots();
     this.db = new DatabaseSync(DB_PATH);
     this.db.exec(`
       PRAGMA journal_mode = WAL;
@@ -207,16 +214,32 @@ export class PlatformStateStore {
   async saveEnvelopeToDatabase(source) {
     if (!this.db) throw new Error("Database is not initialised");
     this.envelope.updatedAt = new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO platform_meta (key, value)
-      VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run("envelope", JSON.stringify(this.envelope));
-    this.db.prepare(`
-      INSERT INTO platform_meta (key, value)
-      VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run("lastWriteSource", String(source || "unknown"));
+    try {
+      this.db.prepare(`
+        INSERT INTO platform_meta (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run("envelope", JSON.stringify(this.envelope));
+      this.db.prepare(`
+        INSERT INTO platform_meta (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run("lastWriteSource", String(source || "unknown"));
+    } catch (error) {
+      if (!isDiskFullError(error)) throw error;
+      await this.pruneSnapshots();
+      this.db.exec("PRAGMA wal_checkpoint(FULL);");
+      this.db.prepare(`
+        INSERT INTO platform_meta (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run("envelope", JSON.stringify(this.envelope));
+      this.db.prepare(`
+        INSERT INTO platform_meta (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run("lastWriteSource", String(source || "unknown"));
+    }
   }
 
   getPublicState() {
@@ -498,7 +521,9 @@ export class PlatformStateStore {
   }
 
   async pruneSnapshots() {
-    const entries = await fsp.readdir(SNAPSHOT_DIR, { withFileTypes: true });
+    const entries = await fsp.readdir(SNAPSHOT_DIR, { withFileTypes: true }).catch(function() {
+      return [];
+    });
     const files = [];
     for (const entry of entries) {
       if (!entry.isFile()) continue;
