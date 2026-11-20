@@ -1612,7 +1612,7 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
 // ============================================================
 // DASHBOARD TAB
 // ============================================================
-function DashboardTab({ stackData, settings, weather, chargeLog, lastChangeout, downtimeHrs, onDowntime, vocC, pahC, canEdit, latestCarbonBatch }) {
+function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog, lastChangeout, downtimeHrs, onDowntime, vocC, pahC, canEdit, latestCarbonBatch }) {
   const [showWeighting, setShowWeighting] = useState(false);
   const currentPeriodChargeLog = useMemo(()=>filterChargeLogSince(chargeLog, lastChangeout), [chargeLog, lastChangeout]);
   const logChargeHrs = useMemo(()=>calcActiveHrsFromLog(currentPeriodChargeLog),[currentPeriodChargeLog]);
@@ -1628,7 +1628,7 @@ function DashboardTab({ stackData, settings, weather, chargeLog, lastChangeout, 
   const effectiveChargeHrs = calcEffectiveHours(chargeActiveHrs, lastChangeout, currentPeriodEnd);
   const activeHrs = effectiveChargeHrs;
 
-  const ambientTemp = weather ? weather.temperature_2m : settings.typicalTempC;
+  const ambientTemp = ambientOverride != null ? ambientOverride : weather ? weather.temperature_2m : settings.typicalTempC;
   const rawRh       = weather ? weather.relative_humidity_2m : settings.typicalRH;
   const rh          = settings.useConservativeRH ? 90 : rawRh;
   const stackTempCorrection = settings.stackTempCorrectionC ?? 10.3;
@@ -1652,10 +1652,14 @@ function DashboardTab({ stackData, settings, weather, chargeLog, lastChangeout, 
   const missingPah = getMostRecentPeriodWithMissingPAH(stackData);
 
   const vocWindow   = safeWindowHoursVOC(ambientTemp, rh, vocC, nf);
-  const remainHrs   = Math.max(0, vocWindow - activeHrs);
-  const remainDays  = Math.round(remainHrs / (24*settings.utilisationRate));
-  const predictedDepletionDate = isoDateFromDate(addDays(now, remainDays));
-  const preTestBufferDays = settings.preTestBufferDays != null ? settings.preTestBufferDays : 14;
+  // Scheduling dates use the same day-by-day seasonal forecast as the Overview and
+  // Forward Forecast tabs, so every screen shows one date for the current bed.
+  const schedule = forecastFrom(now, activeHrs, settings, vocC, pahC);
+  const vocRow = schedule.fc.vocBreach;
+  const remainDays  = vocRow ? vocRow.day : 365;
+  const remainHrs   = vocRow ? Math.max(0, Math.round(vocRow.activeHrs - activeHrs)) : Math.max(0, vocWindow - activeHrs);
+  const predictedDepletionDate = vocRow ? vocRow.date : "Beyond 12 months";
+  const preTestBufferDays = schedule.bufferDays;
   const latestTestDays = Math.max(0, remainDays - preTestBufferDays);
   const latestTestDate = isoDateFromDate(addDays(now, latestTestDays));
   const pahAmbientThresh = ambientThresholdForPAHAtHours(activeHrs, pahC);
@@ -1801,7 +1805,8 @@ function DashboardTab({ stackData, settings, weather, chargeLog, lastChangeout, 
           />
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:8, lineHeight:1.5 }}>
-          Scheduling dates are central-estimate predictions from the regression model.
+          Scheduling dates are central-estimate predictions from the regression model, run day by day
+          over Boston seasonal climatology (the same forecast as the Overview and Forward Forecast tabs).
           Uncertainty band x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} applies to the
           VOC depletion date. PAH risk onset uses Boston climatological monthly means
           and will differ from actual conditions. Use Forward Forecast tab for
@@ -5735,7 +5740,7 @@ export default function App() {
             />
           </>
         )}
-        {activeTab==="dashboard"    && <DashboardTab    stackData={stackData} settings={settings} weather={weather} chargeLog={chargeLog} lastChangeout={lastChangeout} downtimeHrs={downtimeHrs} onDowntime={setDowntimeHrs} vocC={vocC} pahC={pahC} canEdit={canEdit} latestCarbonBatch={latestCarbonBatch} />}
+        {activeTab==="dashboard"    && <DashboardTab    stackData={stackData} settings={settings} weather={weather} ambientOverride={appAmbientTemp} chargeLog={chargeLog} lastChangeout={lastChangeout} downtimeHrs={downtimeHrs} onDowntime={setDowntimeHrs} vocC={vocC} pahC={pahC} canEdit={canEdit} latestCarbonBatch={latestCarbonBatch} />}
         {activeTab==="cycles"       && <ChargeCyclesTab chargeLog={chargeLog} onAddCharge={c=>setChargeLog(l=>[...l,c])} onDeleteCharge={id=>setChargeLog(l=>l.filter(c=>c.id!==id))} lastChangeout={lastChangeout} settings={settings} vocC={vocC} canEdit={canEdit} />}
         {activeTab==="stack"        && <StackTestsTab   stackData={stackData} onAdd={e=>setStackDataExtra(d=>[...d,e])} settings={settings} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} />}
