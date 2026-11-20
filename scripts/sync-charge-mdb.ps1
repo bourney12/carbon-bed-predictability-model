@@ -43,7 +43,8 @@ if ([string]::IsNullOrWhiteSpace($ImportApiKey) -and $KeyFile -and (Test-Path $K
 # Continuous watch:
 #   powershell -ExecutionPolicy Bypass -File .\sync-charge-mdb.ps1 -ImportApiKey "<key>"
 #
-# Requires the Microsoft Access Database Engine (ACE OLEDB 12.0). Its bitness must
+# Uses the Access Database Engine (ACE) if installed, else the Jet 4.0 driver built into
+# Windows (32-bit). Driver bitness must
 # match PowerShell: 64-bit ACE -> normal PowerShell; 32-bit ACE ->
 # C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe
 
@@ -57,9 +58,28 @@ if ([string]::IsNullOrWhiteSpace($ImportApiKey)) {
 function Get-ChargeRowsFromMdb {
   param([string]$Path)
 
-  $connString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=$Path;Mode=Read|Share Deny None;Persist Security Info=False;"
-  $conn = New-Object System.Data.OleDb.OleDbConnection($connString)
-  $conn.Open()
+  # Try the Access Database Engine first, then the Jet 4.0 driver built into Windows
+  # (32-bit only, reads .mdb files - no install needed; run from SysWOW64 PowerShell).
+  $conn = $null
+  $errors = @()
+  foreach ($provider in @("Microsoft.ACE.OLEDB.16.0", "Microsoft.ACE.OLEDB.12.0", "Microsoft.Jet.OLEDB.4.0")) {
+    $connString = "Provider=$provider;Data Source=$Path;Mode=Read|Share Deny None;Persist Security Info=False;"
+    $candidate = New-Object System.Data.OleDb.OleDbConnection($connString)
+    try {
+      $candidate.Open()
+      $conn = $candidate
+      Write-Host ("Opened MDB with {0} ({1}-bit PowerShell)." -f $provider, ([IntPtr]::Size * 8))
+      break
+    }
+    catch {
+      $msg = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+      $errors += ("{0}: {1}" -f $provider, $msg)
+      $candidate.Dispose()
+    }
+  }
+  if ($null -eq $conn) {
+    throw ("No Access/Jet driver could open the MDB in this {0}-bit PowerShell. Tried: {1}" -f ([IntPtr]::Size * 8), ($errors -join " | "))
+  }
   try {
     $cmd = $conn.CreateCommand()
     $cmd.CommandText = "SELECT ID, Plant, Charge_Start, Charge_End FROM ChargeData"
