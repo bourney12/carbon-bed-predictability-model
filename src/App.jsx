@@ -65,6 +65,11 @@ const THEME_CSS = [
   ".cb .recharts-legend-item-text{color:var(--text2)!important}",
   ".cb button:focus-visible,.cb a:focus-visible,.cb input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}",
   ".cb .navbtn:hover{color:var(--text)!important;background:var(--panel2)!important}",
+  ".cb details>summary::marker{color:var(--accent)}",
+  "@media (max-width: 900px){.cb .hdr{padding:10px 14px!important;gap:8px 12px!important}.cb .mainnav{order:3;flex:1 1 100%!important;flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;margin:0 -4px}.cb .mainnav::-webkit-scrollbar{display:none}.cb .mainnav button{flex:0 0 auto;white-space:nowrap}.cb .hdr-tools{margin-left:auto}}",
+  "@media (max-width: 600px){.cb .hdr-sub,.cb .hdr-sync span:not(:first-child){display:none}.cb main{padding:16px 12px 32px!important}}",
+  "[role=tablist]{scrollbar-width:none}",
+  "@media (max-width: 600px){.cb [role=tablist]{flex-wrap:nowrap!important;overflow-x:auto;margin-right:-12px}.cb [role=tablist] button{flex:0 0 auto}}",
 ].join("\n");
 if (typeof document !== "undefined" && !document.getElementById("cb-theme-css")) {
   const el = document.createElement("style");
@@ -1082,7 +1087,7 @@ function StatPill({ label, value, unit, color, sub }) {
   const tint = stroke === C.red ? TINT.redBg : stroke === C.amber ? TINT.amberBg : stroke === C.blue ? TINT.blueBg : stroke === C.teal || stroke === C.rund ? TINT.safeBg : C.surface2;
   return (
     <div style={{ background:tint, borderRadius:12, padding:"14px 16px", flex:1, minWidth:140 }}>
-      <div style={{ fontSize:11, color:C.muted, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>{label}</div>
+      <div style={{ fontSize:12, color:C.muted, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>{label}</div>
       <div style={{ fontSize:"clamp(1.3rem, 2.6vw, 1.75rem)", fontWeight:600, color:stroke, fontFamily:MONO, lineHeight:1 }}>
         {value}<span style={{ fontSize:12, color:C.muted, marginLeft:4, fontWeight:400 }}>{unit}</span>
       </div>
@@ -1104,12 +1109,12 @@ function RiskGauge({ score, label, sub }) {
         <text x={88} y={98} textAnchor="middle" fontSize={10} fill={C.muted} fontWeight={600}>{band.label}</text>
       </svg>
       <div style={{ fontSize:12, color:C.muted, marginTop:-8, fontWeight:600 }}>{label}</div>
-      {sub && <div style={{ fontSize:10, color:C.muted, marginTop:3, lineHeight:1.3 }}>{sub}</div>}
+      {sub && <div style={{ fontSize:12, color:C.muted, marginTop:3, lineHeight:1.3 }}>{sub}</div>}
     </div>
   );
 }
 function Badge({ text, color }) {
-  return <span style={{ display:"inline-block", background:alpha(color, 14), color, borderRadius:999, fontSize:11, fontWeight:600, letterSpacing:"0.02em", padding:"3px 10px" }}>{text}</span>;
+  return <span style={{ display:"inline-block", background:alpha(color, 14), color, borderRadius:999, fontSize:12, fontWeight:600, letterSpacing:"0.02em", padding:"3px 10px" }}>{text}</span>;
 }
 function TabBar({ tabs, active, onChange }) {
   return (
@@ -1128,8 +1133,8 @@ function TabBar({ tabs, active, onChange }) {
 }
 function Input({ label, value, onChange, type="text", step, min, max, placeholder, style={}, disabled=false }) {
   return (
-    <div style={{ marginBottom:14, ...style }}>
-      {label && <label style={{ display:"block", fontSize:11, fontWeight:600, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6, lineHeight:1.2 }}>{label}</label>}
+    <div style={{ marginBottom:14, display:"flex", flexDirection:"column", justifyContent:"flex-end", ...style }}>
+      {label && <label style={{ display:"block", fontSize:12, fontWeight:600, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6, lineHeight:1.2 }}>{label}</label>}
       <input type={type} value={value} step={step} min={min} max={max} placeholder={placeholder} disabled={disabled}
         onChange={e=>onChange(type==="number" ? parseFloat(e.target.value) : e.target.value)}
         style={{ width:"100%", height:40, padding:"8px 12px", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, color:disabled?C.muted:C.ink, background:disabled?C.surface3:C.surface2, fontFamily:type==="number"?MONO:"inherit", boxSizing:"border-box", cursor:disabled?"not-allowed":"text", opacity:disabled?0.75:1 }} />
@@ -1218,7 +1223,7 @@ function ProcessSchematic({ activeHrs, vocWindowHrs, tvocPredicted, pahPredicted
         <rect x={774} y={154} width={20} height={20} fill={C.red} /><text x={806} y={169} fill={C.muted} fontSize={14} fontFamily={MONO}>{"> 85%"}</text>
       </svg>
       </div>
-      <div className="schematic-scroll-hint" style={{ fontSize:10, color:C.muted, textAlign:"right", marginTop:3 }}>Scroll right to see full process view</div>
+      <div className="schematic-scroll-hint" style={{ fontSize:12, color:C.muted, textAlign:"right", marginTop:3 }}>Scroll right to see full process view</div>
     </Card>
   );
 }
@@ -1653,7 +1658,7 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
   return (
     <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
       <div style={{ flex:1, minWidth:200, background:vOk?TINT.safeBg:TINT.amberBg, border:`1px solid ${vOk?C.teal:C.amber}`, borderRadius:8, padding:"10px 14px" }}>
-        <div style={{ fontSize:10, fontWeight:700, color:vOk?C.teal:C.amber, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>VOC Model</div>
+        <div style={{ fontSize:12, fontWeight:700, color:vOk?C.teal:C.amber, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>VOC Model</div>
         <div style={{ fontSize:12, color:C.ink }}>
           {vOk ? (
             <>
@@ -1662,12 +1667,12 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
             </>
           ) : `Defaults (n=${vocC.n} - need 3+)`}
         </div>
-        <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>a={vocC.a.toFixed(3)} b={vocC.b.toFixed(3)} c={vocC.c.toFixed(3)} | Uncertainty band: x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)}</div>
-        <div style={{ fontSize:10, color:vocC.bayesianActive?C.teal:C.muted, marginTop:2 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>a={vocC.a.toFixed(3)} b={vocC.b.toFixed(3)} c={vocC.c.toFixed(3)} | Uncertainty band: x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)}</div>
+        <div style={{ fontSize:12, color:vocC.bayesianActive?C.teal:C.muted, marginTop:2 }}>
           Bayes: {vocC.bayesianActive ? "Active" : "Inactive"} | {vocC.bayesianActive ? `delta c=${vocC.bayesC ? (vocC.bayesC.mean - vocC.c).toFixed(3) : "n/a"}` : `n=${vocC.n} of 4 req.`}
         </div>
         <Fold title="What the cross-validated R2 means">
-        <div style={{ fontSize:10, color:TINT.amberText, marginTop:6, padding:"7px 9px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:6, lineHeight:1.45 }}>
+        <div style={{ fontSize:12, color:TINT.amberText, marginTop:6, padding:"7px 9px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:6, lineHeight:1.45 }}>
           {"LOO CV R2 is the leave-one-out cross-validated R2. It estimates predictive " +
           "accuracy on periods NOT used for fitting and is the primary EA-defensible " +
           "reliability metric. In-sample R2 is shown for audit trail only. " +
@@ -1698,7 +1703,7 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
           var diff = Math.round((bayesPred - ridgePred) * 10) / 10;
           var diffColor = Math.abs(diff) > 5 ? C.amber : C.muted;
           return (
-            <div style={{ fontSize:10, color:diffColor, marginTop:2 }}>
+            <div style={{ fontSize:12, color:diffColor, marginTop:2 }}>
               {"Bayes ref (" + bayesRefPeriod.period + ", " +
               bayesRefPeriod.activeHrs + " raw hrs / " + bayesEffectiveHrs.toFixed(0) + " eff hrs, " +
               bayesRefPeriod.avgTemp + "C): " +
@@ -1710,25 +1715,25 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
             </div>
           );
         })()}
-        <div style={{ fontSize:10, color:C.amber, marginTop:2 }}>Calibration dataset: independent carbon charge periods only (sameCarbon=false). P1-P3 excluded (same-carbon cumulative observations, not independent data points). n={vocC.n}.</div>
-        <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>P2 retained for anomaly display but excluded by sameCarbon filter. Prediction uncertainty x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} (effective RMSE band in log space).</div>
+        <div style={{ fontSize:12, color:C.amber, marginTop:2 }}>Calibration dataset: independent carbon charge periods only (sameCarbon=false). P1-P3 excluded (same-carbon cumulative observations, not independent data points). n={vocC.n}.</div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>P2 retained for anomaly display but excluded by sameCarbon filter. Prediction uncertainty x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} (effective RMSE band in log space).</div>
         {p4Err && p7Err && (
-          <div style={{ fontSize:10, color:TINT.amberText, marginTop:6, padding:"7px 9px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:6, lineHeight:1.45 }}>
+          <div style={{ fontSize:12, color:TINT.amberText, marginTop:6, padding:"7px 9px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:6, lineHeight:1.45 }}>
             Largest calibration residuals: under-prediction {p4Err.period} actual {p4Err.actual}, predicted {p4Err.pred.toFixed(1)} (+{p4Err.err}%); over-prediction {p7Err.period} actual {p7Err.actual}, predicted {p7Err.pred.toFixed(1)} ({p7Err.err}%). Under-prediction means the model can flag breakthrough later than it occurs; over-prediction means it recommends changeout earlier than necessary. Treat scheduling outputs with corresponding caution and use the uncertainty band.
           </div>
         )}
       </div>
       <div style={{ flex:1, minWidth:200, background:pOk?TINT.safeBg:TINT.amberBg, border:`1px solid ${pOk?C.teal:C.amber}`, borderRadius:8, padding:"10px 14px" }}>
-        <div style={{ fontSize:10, fontWeight:700, color:pOk?C.teal:C.amber, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>PAH Model</div>
+        <div style={{ fontSize:12, fontWeight:700, color:pOk?C.teal:C.amber, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>PAH Model</div>
         <div style={{ fontSize:12, color:C.ink }}>{pOk ? `Live calibrated (n=${pahC.n}, R2=${pahC.r2.toFixed(3)})` : `Defaults (n=${pahC.n} - need 3+)`}</div>
-        <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>Bivariate: temp + age. Breach stack temp at 500 hrs reference: {pahFailTemp(500, pahC).toFixed(1)}C (~{((pahFailTemp(500, pahC) - STACK_TEMP_A) / STACK_TEMP_B).toFixed(1)}C ambient)</div>
-        <div style={{ fontSize:10, color:pahC.bayesianActive?C.teal:C.muted, marginTop:2 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>Bivariate: temp + age. Breach stack temp at 500 hrs reference: {pahFailTemp(500, pahC).toFixed(1)}C (~{((pahFailTemp(500, pahC) - STACK_TEMP_A) / STACK_TEMP_B).toFixed(1)}C ambient)</div>
+        <div style={{ fontSize:12, color:pahC.bayesianActive?C.teal:C.muted, marginTop:2 }}>
           Bayes: {pahC.bayesianActive ? "Active" : "Inactive"} | {pahC.bayesianActive ? `delta c=${pahC.bayesC ? (pahC.bayesC.mean - pahC.c).toFixed(3) : "n/a"}` : `n=${pahC.n} of 4 req.`}
         </div>
-        <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>
           Calibration: independent fresh-carbon periods only (sameCarbon=false). P2 excluded for calibration symmetry with VOC model. P2 certified result retained in display table only. n={pahC.n} independent periods.
         </div>
-        <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>Flow measurements: Envirocare stack discharge (post-demister, post-carbon bed), used as conservative proxy for bed inlet flow.</div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>Flow measurements: Envirocare stack discharge (post-demister, post-carbon bed), used as conservative proxy for bed inlet flow.</div>
       </div>
     </div>
   );
@@ -1856,30 +1861,30 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
         alignItems: "center",
         flexWrap: "wrap",
       }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: C.muted,
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.muted,
           letterSpacing: "0.1em", textTransform: "uppercase" }}>
           Model Health:
         </span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: vocHealthColor,
+        <span style={{ fontSize: 12, fontWeight: 700, color: vocHealthColor,
           fontFamily: MONO }}>
           VOC n={vocC.n} R2={vocC.r2 != null ? vocC.r2.toFixed(2) : "default"}
           {" "}LOO={vocC.r2_loo != null ? vocC.r2_loo.toFixed(2) : "n/a"}
         </span>
-        <span style={{ fontSize: 10, color: C.muted }}>|</span>
-        <span style={{ fontSize: 10, color: C.muted }}>
+        <span style={{ fontSize: 12, color: C.muted }}>|</span>
+        <span style={{ fontSize: 12, color: C.muted }}>
           {vocC.bayesianStatus || "Bayes status unavailable"}
         </span>
-        <span style={{ fontSize: 10, color: C.muted }}>|</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: pahHealthColor,
+        <span style={{ fontSize: 12, color: C.muted }}>|</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: pahHealthColor,
           fontFamily: MONO }}>
           PAH n={pahC.n} R2={pahC.r2 != null ? pahC.r2.toFixed(2) : "default"}
         </span>
-        <span style={{ fontSize: 10, color: C.muted }}>|</span>
-        <span style={{ fontSize: 10, color: C.muted }}>
+        <span style={{ fontSize: 12, color: C.muted }}>|</span>
+        <span style={{ fontSize: 12, color: C.muted }}>
           {pahC.bayesianStatus || "Bayes status unavailable"}
         </span>
-        <span style={{ fontSize: 10, color: C.muted }}>|</span>
-        <span style={{ fontSize: 10, color: C.muted }}>
+        <span style={{ fontSize: 12, color: C.muted }}>|</span>
+        <span style={{ fontSize: 12, color: C.muted }}>
           Full detail: Model Details tab
         </span>
       </div>
@@ -1899,7 +1904,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
             color={pahBreaching?C.red:predPAH>PAH_ELV*0.7?C.amber:C.teal}
             sub={`Stack est. ${estStackTemp.toFixed(1)}C | ELV ${PAH_ELV_SHORT_LABEL}`} />
         </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>
           {opNote} | Flow-corrected loading basis: {activeHrs.toFixed(0)} hrs effective from {chargeActiveHrs.toFixed(0)} raw charge hrs.
         </div>
       </Card>
@@ -1930,7 +1935,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
           />
         </div>
         <Fold title="How the scheduling dates are worked out">
-        <div style={{ fontSize:11, color:C.muted, marginTop:8, lineHeight:1.5 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8, lineHeight:1.5 }}>
           Scheduling dates are central-estimate predictions from the regression model, run day by day
           over Boston seasonal climatology (the same forecast as the Overview and Forward Forecast tabs).
           Uncertainty band x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} applies to the
@@ -1963,7 +1968,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
         )}
         {chargeRatePer28d > 0 && (
           <div style={{ marginTop:10, fontSize:12, color:C.muted }}>
-            Rolling charge rate (28d): {chargeRatePer28d.toFixed(1)} charges/day | At this rate, {chargesRemaining} remaining charges = ~{chargesRemaining>0?(chargesRemaining/chargeRatePer28d).toFixed(0):0} days to failure
+            Rolling charge rate (last 28 days): {chargeRatePer28d.toFixed(1)} charges/day. Days remaining above use the seasonal forecast at the utilisation setting.
           </div>
         )}
         <Fold title="Safe window and the Wheeler-Jonas reference">
@@ -1973,7 +1978,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
           background:C.surface2,
           border:`1px solid ${C.border}`,
           borderRadius:7,
-          fontSize:11,
+          fontSize:12,
           color:C.muted,
           lineHeight:1.6
         }}>
@@ -1982,7 +1987,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
         </div>
         </Fold>
         <Fold title="Wheeler-Jonas theoretical maximum (reference only)">
-        <div style={{ marginTop:10, padding:"10px 14px", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:7, fontSize:11, color:C.muted, lineHeight:1.6 }}>
+        <div style={{ marginTop:10, padding:"10px 14px", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:7, fontSize:12, color:C.muted, lineHeight:1.6 }}>
           Wheeler-Jonas theoretical maximum (engineering reference only): {wjBedLife.toLocaleString()} hrs - not a compliance limit. This figure has no calibrated relationship to any P1-P14 breakthrough observation and consistently exceeds the regression-derived safe window. It must not be used as the basis for carbon changeout scheduling or stack test deferral.
           {latestCarbonBatch ? ` Current carbon batch ref: ${latestCarbonBatch.batchRef || latestCarbonBatch.date || "latest batch"} | iodine ${latestCarbonBatch.iodineMgG != null ? latestCarbonBatch.iodineMgG : "--"} mg/g | density ${latestCarbonBatch.densityKgM3 != null ? latestCarbonBatch.densityKgM3 : "--"} kg/m3.` : " No live carbon batch record available; default carbon properties applied."}
         </div>
@@ -1996,18 +2001,18 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
           <RiskGauge score={pRisk} label="PAH Risk" sub={`${predPAH.toLocaleString()} ug/m3 predicted`} />
           <RiskGauge score={combined} label="Combined" sub={`${Math.round(vocRiskWeight*100)}% VOC + ${Math.round(pahRiskWeight*100)}% PAH weighting`} />
         </div>
-        <div style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:8 }}>
-          {opNote} | Humidity factor: {hf.toFixed(3)} (RH {rh.toFixed(0)}%) | WJ nf: {(nf*100).toFixed(0)}% | DR/Polanyi ref capacity (theoretical): {(drPolanyi(opTemp,predVOCBand.mid,latestCarbonBatch)*1000).toFixed(1)} g/kg <span style={{ color:C.muted, fontSize:10 }}>[Not integrated into VOC regression pathway - engineering reference only]</span>
+        <div style={{ fontSize:12, color:C.muted, textAlign:"center", marginTop:8 }}>
+          {opNote} | Humidity factor: {hf.toFixed(3)} (RH {rh.toFixed(0)}%) | WJ nf: {(nf*100).toFixed(0)}% | DR/Polanyi ref capacity (theoretical): {(drPolanyi(opTemp,predVOCBand.mid,latestCarbonBatch)*1000).toFixed(1)} g/kg <span style={{ color:C.muted, fontSize:12 }}>[Not integrated into VOC regression pathway - engineering reference only]</span>
         </div>
         <div style={{ textAlign:"center", marginTop:8 }}>
           <button onClick={()=>setShowWeighting(v=>!v)} style={{ border:`1px solid ${C.border}`, background:C.surface2, color:C.blue, borderRadius:20, width:24, height:24, cursor:"pointer", fontWeight:800 }}>?</button>
         </div>
         {showWeighting && (
-          <div style={{ fontSize:11, color:C.muted, marginTop:8, lineHeight:1.5 }}>
+          <div style={{ fontSize:12, color:C.muted, marginTop:8, lineHeight:1.5 }}>
             VOC currently weighted at {Math.round(vocRiskWeight*100)}% and PAH at {Math.round(pahRiskWeight*100)}%. This reflects operational priority: VOC is the binding constraint in every season (P8 105 mg/m3, 5.25x ELV; summer 2026 bed peaked at 166 mg/m3 at P11). PAH has been within ELV in all winter/spring periods but exceeded at P4, P10, P11 and P12 when stack temperature was ~25C or above. Weighting is configurable in Settings.
           </div>
         )}
-        <div style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:8 }}>
+        <div style={{ fontSize:12, color:C.muted, textAlign:"center", marginTop:8 }}>
           WJ bed life is a theoretical maximum under steady-state inlet conditions. VOC regression safe window is the primary operational limit.
         </div>
       </Card>
@@ -2027,7 +2032,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
           <StatPill label="Humidity" value={rh.toFixed(0)} unit="% RH" />
           <StatPill label="Humidity Factor" value={hf.toFixed(3)} unit="" sub="Applied to VOC model" />
         </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>
           Calculated at T_operative = {opTemp.toFixed(1)}C (ambient {ambientTemp.toFixed(1)}C + {stackTempCorrection.toFixed(1)}C correction).
         </div>
       </Card>
@@ -2046,17 +2051,17 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
         <ResponsiveContainer width="100%" height={230}>
           <ComposedChart data={forecastVOC} margin={{ top:5, right:24, bottom:18, left:0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-            <XAxis dataKey="hrs" label={{ value:"Cumulative Active Hours", position:"insideBottom", offset:-8, fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
-            <YAxis label={{ value:"VOC mg/m3", angle:-90, position:"insideLeft", fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
+            <XAxis dataKey="hrs" label={{ value:"Cumulative Active Hours", position:"insideBottom", offset:-8, fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
+            <YAxis label={{ value:"VOC mg/m3", angle:-90, position:"insideLeft", fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
             <Tooltip formatter={(v,n)=>[typeof v==="number"?v.toFixed(1):v,n]} />
-            <ReferenceLine y={VOC_ELV} stroke={C.red} strokeDasharray="6 3" label={{ value:"ELV 20", fill:C.red, fontSize:10 }} />
-            <ReferenceLine x={activeHrs} stroke={C.gold} strokeDasharray="4 2" label={{ value:"Now", fill:C.gold, fontSize:10, position:"insideTopRight" }} />
+            <ReferenceLine y={VOC_ELV} stroke={C.red} strokeDasharray="6 3" label={{ value:"ELV 20", fill:C.red, fontSize:12 }} />
+            <ReferenceLine x={activeHrs} stroke={C.gold} strokeDasharray="4 2" label={{ value:"Now", fill:C.gold, fontSize:12, position:"insideTopRight" }} />
             <Area type="monotone" dataKey="hi" stroke={C.amber} strokeWidth={1} strokeDasharray="4 2" fill={C.amber} fillOpacity={0.15} dot={false} name="Upper (x1SD)" />
             <Area type="monotone" dataKey="lo" stroke={C.blue} strokeWidth={1} strokeDasharray="4 2" fill={C.surface} fillOpacity={0.9} dot={false} name="Lower (x1SD)" />
             <Line type="monotone" dataKey="mid" stroke={C.rund} strokeWidth={2.5} dot={false} name="Predicted VOC" />
           </ComposedChart>
         </ResponsiveContainer>
-        <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
           Shaded band = x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} uncertainty (effective RMSE in log space). R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"}. WJ nf={((nf||0.53)*100).toFixed(0)}% scales safe window (not prediction input). {opNote}.
         </div>
       </Card>
@@ -2068,14 +2073,14 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
             value={downtimeHrs} onChange={onDowntime} style={{ flex:1, minWidth:180, marginBottom:0 }} disabled={!canEdit} />
         </div>
         <Fold title="About fan running hours">
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>
           Fan running hours are auto-calculated as days since changeout x 24 hrs, minus
           logged downtime. Log any period when the extraction system was offline
           (maintenance, plant shutdown, power failure). Do not include normal operational
           pauses between charges.
         </div>
         </Fold>
-        {!canEdit ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Viewer mode: downtime entry is locked.</div> : null}
+        {!canEdit ? <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Viewer mode: downtime entry is locked.</div> : null}
       </Card>
     </div>
   );
@@ -2316,10 +2321,10 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onAddCharges, onDeleteCharge,
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={cumulChart} margin={{ top:5, right:20, bottom:18, left:0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-              <XAxis dataKey="day" label={{ value:"Days since changeout", position:"insideBottom", offset:-8, fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
-              <YAxis label={{ value:"Cumul. hrs", angle:-90, position:"insideLeft", fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
+              <XAxis dataKey="day" type="number" domain={[0, "dataMax"]} allowDecimals={false} label={{ value:"Days since changeout", position:"insideBottom", offset:-8, fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
+              <YAxis label={{ value:"Cumul. hrs", angle:-90, position:"insideLeft", fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
               <Tooltip formatter={(v,n)=>[typeof v==="number"?v.toFixed(1):v,n]} />
-              <ReferenceLine y={vocWindow} stroke={C.red} strokeDasharray="5 3" label={{ value:"VOC window", fill:C.red, fontSize:10 }} />
+              <ReferenceLine y={vocWindow} stroke={C.red} strokeDasharray="5 3" label={{ value:"VOC window", fill:C.red, fontSize:12 }} />
               <Area type="monotone" dataKey="cumHrs" fill={alpha(C.rund,15)} stroke={C.rund} strokeWidth={2} name="Cumulative Active Hrs" />
             </AreaChart>
           </ResponsiveContainer>
@@ -2332,9 +2337,9 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onAddCharges, onDeleteCharge,
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={weeklyData} margin={{ top:5, right:20, bottom:18, left:0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-              <XAxis dataKey="week" tick={{ fontSize:9, fill:C.ink }} />
-              <YAxis yAxisId="c" tick={{ fontSize:10, fill:C.ink }} />
-              <YAxis yAxisId="h" orientation="right" tick={{ fontSize:10, fill:C.ink }} />
+              <XAxis dataKey="week" tick={{ fontSize:12, fill:C.ink }} />
+              <YAxis yAxisId="c" tick={{ fontSize:12, fill:C.ink }} />
+              <YAxis yAxisId="h" orientation="right" tick={{ fontSize:12, fill:C.ink }} />
               <Tooltip formatter={(v,n)=>[typeof v==="number"?v.toFixed(1):v,n]} />
               <Legend />
               <Bar yAxisId="c" dataKey="plant1" fill={C.rund} name="Plant 1" stackId="a" />
@@ -2358,7 +2363,7 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onAddCharges, onDeleteCharge,
         {csvPreview && (
           <div style={{ marginTop:12 }}>
             <div style={{ overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                 <thead><tr>{["Date","Plant","Count","Hrs/charge","Total hrs"].map(h=><th key={h} style={{ textAlign:"left", padding:"5px 7px", color:C.muted }}>{h}</th>)}</tr></thead>
                 <tbody>{csvPreview.ready.slice(0,10).map(r=>{
                   const avg = r.type==="plant1"?P1_AVG_HRS:P2_AVG_HRS;
@@ -2367,22 +2372,22 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onAddCharges, onDeleteCharge,
                 })}</tbody>
               </table>
             </div>
-            {csvPreview.errors.length > 0 && <div style={{ marginTop:8, fontSize:11, color:C.red }}>{csvPreview.errors.join(" | ")}</div>}
+            {csvPreview.errors.length > 0 && <div style={{ marginTop:8, fontSize:12, color:C.red }}>{csvPreview.errors.join(" | ")}</div>}
             <div style={{ marginTop:10, display:"flex", gap:8 }}>
               <Btn onClick={()=>{onAddCharges(csvPreview.ready); const p1=csvPreview.ready.filter(r=>r.type==="plant1").reduce((s,r)=>s+r.count,0); const p2=csvPreview.ready.filter(r=>r.type==="plant2").reduce((s,r)=>s+r.count,0); const th=csvPreview.ready.reduce((s,r)=>s+(r.durationHrs||(r.type==="plant1"?P1_AVG_HRS:P2_AVG_HRS))*r.count,0); setCsvStatus(`Imported ${csvPreview.ready.length} charges (${p1} Plant 1, ${p2} Plant 2, ${th.toFixed(1)} active hrs)`); setCsvPreview(null);}} variant="rund" disabled={!canEdit}>Import All</Btn>
               <Btn onClick={()=>setCsvPreview(null)} variant="ghost">Cancel</Btn>
             </div>
           </div>
         )}
-        {!canEdit ? <div style={{ marginTop:10, fontSize:11, color:C.muted }}>Viewer mode: CSV import is disabled.</div> : null}
+        {!canEdit ? <div style={{ marginTop:10, fontSize:12, color:C.muted }}>Viewer mode: CSV import is disabled.</div> : null}
       </Card>
 
       <Card>
         <SectionTitle>Log Charges</SectionTitle>
-        <div style={{ display:"grid", gridTemplateColumns:"minmax(150px,0.9fr) minmax(180px,1.2fr) minmax(120px,0.7fr) minmax(150px,0.9fr) minmax(190px,1.3fr)", gap:12, alignItems:"end" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(150px, 100%), 1fr))", gap:12, alignItems:"end" }}>
           <Input label="Date" type="date" value={form.date} onChange={v=>setForm(f=>({...f,date:v}))} style={{ marginBottom:0 }} disabled={!canEdit} />
           <div style={{ marginBottom:0 }}>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5, lineHeight:1.2 }}>Plant / Type</label>
+            <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5, lineHeight:1.2 }}>Plant / Type</label>
             <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))} disabled={!canEdit}
               style={{ width:"100%", height:38, padding:"8px 12px", border:`1px solid ${C.border}`, borderRadius:7, fontSize:13, background:canEdit?C.surface2:C.surface3, color:canEdit?C.ink:C.muted, boxSizing:"border-box", cursor:canEdit?"pointer":"not-allowed" }}>
               <option value="plant1">Plant 1</option>
@@ -2395,7 +2400,7 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onAddCharges, onDeleteCharge,
         </div>
         <div style={{ marginTop:10 }}>
           <Btn onClick={handleAdd} variant="rund" disabled={!canEdit}>Log Charge(s)</Btn>
-          <span style={{ fontSize:11, color:C.muted, marginLeft:14 }}>No duration = plant average ({form.type==="plant1"?P1_AVG_HRS:P2_AVG_HRS} hrs/charge)</span>
+          <span style={{ fontSize:12, color:C.muted, marginLeft:14 }}>No duration = plant average ({form.type==="plant1"?P1_AVG_HRS:P2_AVG_HRS} hrs/charge)</span>
         </div>
       </Card>
 
@@ -2429,7 +2434,7 @@ function ChargeLogCard({ chargeLog, onDeleteCharge, canEdit }) {
   const filtered = filterMonth ? rows.filter(r => String(r.date).startsWith(filterMonth)) : rows;
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const pageRows = filtered.slice(page * PAGE, page * PAGE + PAGE);
-  const th = { textAlign:"left", padding:"8px 10px", fontSize:11, fontWeight:600, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase", borderBottom:`1px solid ${C.border}` };
+  const th = { textAlign:"left", padding:"8px 10px", fontSize:12, fontWeight:600, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase", borderBottom:`1px solid ${C.border}` };
   const td = { padding:"8px 10px", borderBottom:`1px solid ${C.border}`, fontSize:13 };
   const first = rows.length ? rows[rows.length - 1].date : "--";
   const last = rows.length ? rows[0].date : "--";
@@ -2681,9 +2686,9 @@ function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchi
     <div>
       <MissingPAHBanner period={missingPah} />
       <Card>
-        <SectionTitle>Stack Test Workflow</SectionTitle>
+        <SectionTitle>Adding a stack test</SectionTitle>
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.7 }}>
-          Calibration detail, model fit table, residual analysis, and VOC model curves have been moved to the Model Details tab. This tab contains stack test data entry, PDF import, and the flow anomaly record.
+          Add each new MCERTS stack test here, by importing the report PDF or typing the results in. Adding a test recalibrates the forecast straight away. Results and charts are on the Compliance tab.
         </div>
         <div style={{ marginTop:10, padding:"10px 12px", background:TINT.blueBg, border:`1px solid ${C.blue}`, borderRadius:7, fontSize:12, color:TINT.blueText, lineHeight:1.6 }}>
           Note: All VOC and PAH stack test data in this application is scoped to Emission Point A4 (Creosote Impregnation Plant) only, per Permit EPR/A2/1 Schedule 4, Table 4.1. Emission Point A1 (Combustion Stack) carries an independent VOC limit of 20 mg/Nm3 from a different source and is NOT included in this dataset.
@@ -2702,10 +2707,10 @@ function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchi
           <label htmlFor="stackPdfFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse PDF</label>
           {pdfStatus && <div style={{ fontSize:12, color:pdfImporting?C.amber:pdfStatus.startsWith("Import failed")||pdfStatus.startsWith("PDF files")?C.red:C.teal, marginTop:10 }}>{pdfStatus}</div>}
         </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>
           Extracts period, test date, active hours, charges, ambient/stack temperature, RH, TVOC and total PAH where present. Review the populated fields before recalibrating.
         </div>
-        {!canEdit ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Viewer mode: stack test import and manual entry are locked.</div> : null}
+        {!canEdit ? <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Viewer mode: stack test import and manual entry are locked.</div> : null}
       </Card>
 
       <Card>
@@ -2724,7 +2729,7 @@ function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchi
           <Input label="PAH ug/m3"  type="number" step="0.1" value={form.pah}  onChange={v=>setForm(f=>({...f,pah:v}))}       style={{ flex:"1 1 90px"  }} disabled={!canEdit} />
           <Input label="Stack Discharge Flow (m3/hr) - from report" type="number" step="1" value={form.flowRate_m3hr} onChange={v=>setForm(f=>({...f, flowRate_m3hr:v}))} style={{ flex:"1 1 180px" }} disabled={!canEdit} />
           <div style={{ flex:"1 1 220px" }}>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5 }}>A4 Liquid Droplets Fallout</label>
+            <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5 }}>A4 Liquid Droplets Fallout</label>
             <select value={form.dropletFalloutObserved} onChange={e=>setForm(f=>({...f, dropletFalloutObserved:e.target.value}))} disabled={!canEdit} style={{ width:"100%", height:38, padding:"8px 12px", border:`1px solid ${C.border}`, borderRadius:7, fontSize:13, background:C.surface2, color:C.ink, boxSizing:"border-box" }}>
               <option value="">Not Recorded</option>
               <option value="pass">Pass - Free from liquid droplet fallout confirmed</option>
@@ -2739,20 +2744,20 @@ function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchi
         )}
         <Btn onClick={handleAdd} variant="rund" disabled={!canEdit}>Add and Recalibrate Both Models</Btn>
         <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Tests dated on or after {lastChangeout} are recorded against the current bed (changed {lastChangeout}), with creosote used since the changeout taken from the creosote log.</div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>Stack temp from MCERTS report header. Critical for PAH calibration - read from test certificate where available.</div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>Stack temp from MCERTS report header. Critical for PAH calibration - read from test certificate where available.</div>
       </Card>
 
       <Card>
         <SectionTitle>A4 Permit Condition Log - Free from liquid droplet fallout</SectionTitle>
-        <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.6 }}>
+        <div style={{ fontSize:12, color:C.muted, marginBottom:10, lineHeight:1.6 }}>
           Permit reference: EPR/A2/1 Schedule 4, Table 4.1, Emission Point A4. This is a qualitative inspection condition, not a concentration limit, and is not used in predictive model calculations.
         </div>
         <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
             <thead>
               <tr style={{ borderBottom:`2px solid ${C.border}` }}>
                 {["Period","Test Date","Droplet Fallout Condition"].map(h=>(
-                  <th key={h} style={{ textAlign:"left", padding:"6px 8px", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase" }}>{h}</th>
+                  <th key={h} style={{ textAlign:"left", padding:"6px 8px", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase" }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -2847,10 +2852,10 @@ function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
       </div>
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
-        <div style={{ fontSize:11, color:C.muted }}>Monthly usage (from tank deltas) against deliveries, with mean delivered flash point.</div>
+        <div style={{ fontSize:12, color:C.muted }}>Monthly usage (from tank deltas) against deliveries, with mean delivered flash point.</div>
         <div style={{ display:"flex", gap:4 }}>
           {[[6,"6m"],[12,"12m"],[24,"24m"],[0,"All"]].map(([m,l]) => (
-            <button key={l} onClick={()=>setMonths(m)} style={{ fontSize:10, padding:"3px 8px", border:"1px solid " + C.border, background:months===m?C.rund:C.surface, color:months===m?"#fff":C.ink, cursor:"pointer", borderRadius:2 }}>{l}</button>
+            <button key={l} onClick={()=>setMonths(m)} style={{ fontSize:12, padding:"3px 8px", border:"1px solid " + C.border, background:months===m?C.rund:C.surface, color:months===m?"#fff":C.ink, cursor:"pointer", borderRadius:2 }}>{l}</button>
           ))}
         </div>
       </div>
@@ -2858,11 +2863,11 @@ function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
         <ResponsiveContainer>
           <ComposedChart data={shown} margin={{ top:8, right:16, bottom:4, left:0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-            <XAxis dataKey="label" tick={{ fontSize:10, fill:C.muted }} />
-            <YAxis yAxisId="t" tick={{ fontSize:10, fill:C.muted }} label={{ value:"tonnes", angle:-90, position:"insideLeft", fontSize:10, fill:C.muted }} />
-            <YAxis yAxisId="fp" orientation="right" domain={[130, 170]} tick={{ fontSize:10, fill:C.muted }} label={{ value:"FP C", angle:90, position:"insideRight", fontSize:10, fill:C.muted }} />
-            <Tooltip contentStyle={{ fontSize:11 }} />
-            <Legend wrapperStyle={{ fontSize:11 }} />
+            <XAxis dataKey="label" tick={{ fontSize:12, fill:C.muted }} />
+            <YAxis yAxisId="t" tick={{ fontSize:12, fill:C.muted }} label={{ value:"tonnes", angle:-90, position:"insideLeft", fontSize:12, fill:C.muted }} />
+            <YAxis yAxisId="fp" orientation="right" domain={[130, 170]} tick={{ fontSize:12, fill:C.muted }} label={{ value:"FP C", angle:90, position:"insideRight", fontSize:12, fill:C.muted }} />
+            <Tooltip contentStyle={{ fontSize:12 }} />
+            <Legend wrapperStyle={{ fontSize:12 }} />
             <Bar yAxisId="t" dataKey="usageT" name="Used (t)" fill={C.blue} />
             <Bar yAxisId="t" dataKey="deliveredT" name="Delivered (t)" fill={C.borderGreen} />
             <Line yAxisId="fp" dataKey="avgFP" name="Mean FP (C)" stroke={C.amber} dot={{ r:2 }} connectNulls />
@@ -2870,7 +2875,7 @@ function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      <div style={{ fontSize:10, color:C.muted, marginTop:6 }}>
+      <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>
         {importStatus && importStatus.lastSummary ? importStatus.lastSummary : "No sync status."}
         {importStatus && importStatus.lastImportedAt ? " Last sync " + String(importStatus.lastImportedAt).slice(0,16).replace("T"," ") + " UTC." : ""}
         {importStatus && importStatus.lastError ? " Note: " + importStatus.lastError : ""}
@@ -3102,14 +3107,14 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
         </div>
         </Fold>
         <div style={{ marginTop:14 }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5 }}>
+          <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5 }}>
             WJ Naphthalene/TVOC Fraction: {wjFrac.toFixed(1)}%
           </label>
           <input type="range" min={30} max={70} step={0.5} value={wjFrac}
             disabled={!canEdit}
             onChange={e=>onSettingChange("naphthaleneFrac",parseFloat(e.target.value)/100)}
             style={{ width:"100%", accentColor:C.rund, opacity:canEdit?1:0.65, cursor:canEdit?"pointer":"not-allowed" }} />
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.muted }}>
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:C.muted }}>
             <span>30% (below winter ref)</span><span>53% (plant calib. - operative)</span><span>70% (above range)</span>
           </div>
         </div>
@@ -3120,7 +3125,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
           background: TINT.blueBg,
           border: "1px solid " + C.blue,
           borderRadius: 7,
-          fontSize: 11,
+          fontSize: 12,
           color: TINT.blueText,
           lineHeight: 1.65
         }}>
@@ -3138,7 +3143,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
           <table style={{
             width: "100%",
             borderCollapse: "collapse",
-            fontSize: 11,
+            fontSize: 12,
             marginTop: 8
           }}>
             <thead>
@@ -3147,7 +3152,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
                   <th key={h} style={{
                     textAlign: "left",
                     padding: "5px 8px",
-                    fontSize: 9,
+                    fontSize: 12,
                     fontWeight: 700,
                     color: C.muted,
                     letterSpacing: "0.08em",
@@ -3186,7 +3191,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
                   <td style={{
                     padding: "6px 8px",
                     color: C.muted,
-                    fontSize: 10
+                    fontSize: 12
                   }}>
                     {basis}
                   </td>
@@ -3196,7 +3201,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
           </table>
           <div style={{
             marginTop: 10,
-            fontSize: 10,
+            fontSize: 12,
             color: C.muted,
             fontStyle: "italic"
           }}>
@@ -3217,7 +3222,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
           <label htmlFor="coaFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse workbook</label>
           {importStatus && <div style={{ fontSize:12, color:importing?C.amber:C.teal, marginTop:10 }}>{importStatus}</div>}
         </div>
-        {!canEdit ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Viewer mode: workbook import and WJ setting changes are locked.</div> : null}
+        {!canEdit ? <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Viewer mode: workbook import and WJ setting changes are locked.</div> : null}
       </Card>
 
       {filteredChartData.length > 0 && (
@@ -3227,7 +3232,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
             <Input label="From" type="date" value={rangeFrom} onChange={setRangeFrom} style={{ flex:"1 1 150px", marginBottom:0 }} />
             <Input label="To" type="date" value={rangeTo} onChange={setRangeTo} style={{ flex:"1 1 150px", marginBottom:0 }} />
             <div style={{ flex:"1 1 180px", marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5, lineHeight:1.2 }}>Metric</label>
+              <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5, lineHeight:1.2 }}>Metric</label>
               <select value={selectedMetric} onChange={e=>setSelectedMetric(e.target.value)}
                 style={{ width:"100%", height:36, padding:"8px 12px", border:`1px solid ${C.border}`, borderRadius:2, fontSize:13, color:C.ink, background:C.surface2, boxSizing:"border-box", outline:`1px solid ${C.borderBright}` }}>
                 {metricOptions.map(opt=><option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -3241,13 +3246,13 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
             <StatPill label={`${selectedMetricConfig.label} Min`} value={filteredMetricMin!=null?filteredMetricMin.toFixed(2):"--"} unit={selectedMetricConfig.unit} color={selectedMetricConfig.color} sub="Lowest in range" />
             <StatPill label={`${selectedMetricConfig.label} Max`} value={filteredMetricMax!=null?filteredMetricMax.toFixed(2):"--"} unit={selectedMetricConfig.unit} color={selectedMetricConfig.color} sub="Highest in range" />
           </div>
-          <div style={{ marginBottom:6, fontSize:11, fontWeight:700, color:C.muted }}>{selectedMetricConfig.label} ({selectedMetricConfig.unit}) over selected CoA date range</div>
+          <div style={{ marginBottom:6, fontSize:12, fontWeight:700, color:C.muted }}>{selectedMetricConfig.label} ({selectedMetricConfig.unit}) over selected CoA date range</div>
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={filteredChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-              <XAxis dataKey="label" tick={{ fontSize:9, fill:C.ink }} />
-              <YAxis domain={["auto","auto"]} tick={{ fontSize:10, fill:C.ink }} />
-              {selectedMetricConfig.ref!=null ? <ReferenceLine y={selectedMetricConfig.ref} stroke={C.amber} strokeDasharray="4 2" label={{ value:selectedMetricConfig.refLabel, fill:C.amber, fontSize:9 }} /> : null}
+              <XAxis dataKey="label" tick={{ fontSize:12, fill:C.ink }} />
+              <YAxis domain={["auto","auto"]} tick={{ fontSize:12, fill:C.ink }} />
+              {selectedMetricConfig.ref!=null ? <ReferenceLine y={selectedMetricConfig.ref} stroke={C.amber} strokeDasharray="4 2" label={{ value:selectedMetricConfig.refLabel, fill:C.amber, fontSize:12 }} /> : null}
               <Tooltip formatter={(v)=>[v!=null?Number(v).toFixed(2):"--",`${selectedMetricConfig.label} (${selectedMetricConfig.unit})`]} labelFormatter={(label, rows)=>{
                 const row = rows && rows[0] && rows[0].payload ? rows[0].payload : null;
                 return row ? `${row.fullDate} | ${row.certNo}` : label;
@@ -3255,13 +3260,13 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
               <Line type="monotone" dataKey={selectedMetric} stroke={selectedMetricConfig.color} strokeWidth={2} dot={{ r:2 }} name={selectedMetricConfig.label} />
             </LineChart>
           </ResponsiveContainer>
-          {filteredMetricRows.length === 0 ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>No {selectedMetricConfig.label.toLowerCase()} values are available within the selected CoA date range.</div> : null}
-          <div style={{ marginTop:14, marginBottom:6, fontSize:11, fontWeight:700, color:C.muted }}>Crystallisation point (C) over selected CoA date range</div>
+          {filteredMetricRows.length === 0 ? <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>No {selectedMetricConfig.label.toLowerCase()} values are available within the selected CoA date range.</div> : null}
+          <div style={{ marginTop:14, marginBottom:6, fontSize:12, fontWeight:700, color:C.muted }}>Crystallisation point (C) over selected CoA date range</div>
           <ResponsiveContainer width="100%" height={140}>
             <LineChart data={crystallisationChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-              <XAxis dataKey="label" tick={{ fontSize:9, fill:C.ink }} />
-              <YAxis domain={["auto","auto"]} tick={{ fontSize:10, fill:C.ink }} />
+              <XAxis dataKey="label" tick={{ fontSize:12, fill:C.ink }} />
+              <YAxis domain={["auto","auto"]} tick={{ fontSize:12, fill:C.ink }} />
               <Tooltip formatter={(v)=>[v!=null?Number(v).toFixed(2):"--","Crystallisation (C)"]} labelFormatter={(label, rows)=>{
                 const row = rows && rows[0] && rows[0].payload ? rows[0].payload : null;
                 return row ? `${row.fullDate} | ${row.certNo}` : label;
@@ -3269,7 +3274,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
               <Line type="monotone" dataKey="crystallisation" stroke={C.blue} strokeWidth={2} dot={{ r:2 }} name="Crystallisation" />
             </LineChart>
           </ResponsiveContainer>
-          {filteredChartData.length === 0 ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>No CoA records fall within the selected date range.</div> : null}
+          {filteredChartData.length === 0 ? <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>No CoA records fall within the selected date range.</div> : null}
         </Card>
       )}
 
@@ -3292,11 +3297,11 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
         <Card>
           <SectionTitle>CoA Records ({coaData.length})</SectionTitle>
           <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
                 <tr style={{ borderBottom:`2px solid ${C.border}` }}>
                   {["Date","Cert No","Qty (t)","Flashpoint","Crystallisation","Naph %","B(a)P ppm","Density"].map(h=>(
-                    <th key={h} style={{ textAlign:"left", padding:"6px 10px", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase" }}>{h}</th>
+                    <th key={h} style={{ textAlign:"left", padding:"6px 10px", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -3315,7 +3320,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
                 ))}
               </tbody>
             </table>
-            {coaData.length>25&&<div style={{ fontSize:11, color:C.muted, marginTop:4 }}>Showing 25 most recent of {coaData.length}</div>}
+            {coaData.length>25&&<div style={{ fontSize:12, color:C.muted, marginTop:4 }}>Showing 25 most recent of {coaData.length}</div>}
           </div>
         </Card>
       )}
@@ -3448,7 +3453,7 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
         <Fold title="Full model specification and caveats">
           <ModelArchitectureDetail vocC={vocC} pahC={pahC} settings={settings} />
         </Fold>
-        <div style={{ marginTop:10, fontSize:11, color:C.muted }}>
+        <div style={{ marginTop:10, fontSize:12, color:C.muted }}>
           Current WJ reference batch: {latestCarbonBatch ? `${latestCarbonBatch.batchRef || latestCarbonBatch.date || "latest batch"} | iodine ${latestCarbonBatch.iodineMgG != null ? latestCarbonBatch.iodineMgG : "--"} mg/g | density ${latestCarbonBatch.densityKgM3 != null ? latestCarbonBatch.densityKgM3 : "--"} kg/m3` : "No live carbon quality batch loaded; default carbon assumptions in use."}
         </div>
       </Card>
@@ -3461,19 +3466,19 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
         <div style={{ marginTop:8, fontSize:12, color:Math.abs((vocCWithoutP2.a||0)-(vocC.a||0))>0.1?C.amber:C.muted }}>
           With P2: a={vocC.a.toFixed(3)}, b={vocC.b.toFixed(3)}, R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"} | Without P2: a={vocCWithoutP2.a.toFixed(3)}, b={vocCWithoutP2.b.toFixed(3)}, R2={vocCWithoutP2.r2!=null?vocCWithoutP2.r2.toFixed(3):"default"}
         </div>
-        <div style={{ marginTop:8, fontSize:11, color:C.muted }}>P2 exclusion is a sensitivity test only. The operative model uses the independent-period calibration rule. Any decision to formally exclude P2 from calibration must be documented and agreed with the Environment Agency.</div>
+        <div style={{ marginTop:8, fontSize:12, color:C.muted }}>P2 exclusion is a sensitivity test only. The operative model uses the independent-period calibration rule. Any decision to formally exclude P2 from calibration must be documented and agreed with the Environment Agency.</div>
       </Card>
       <Card>
         <SectionTitle>Model Fit - Predicted vs Actual</SectionTitle>
-        <div style={{ background:TINT.blueBg, borderLeft:`3px solid ${C.blue}`, borderRadius:7, padding:"10px 14px", fontSize:11, color:TINT.blueText, marginBottom:10, lineHeight:1.55 }}>
+        <div style={{ background:TINT.blueBg, borderLeft:`3px solid ${C.blue}`, borderRadius:7, padding:"10px 14px", fontSize:12, color:TINT.blueText, marginBottom:10, lineHeight:1.55 }}>
           ELV applicability: Environmental permit ELVs (VOC 20 mg/m3, PAH 1,000 ug/m3) were formally applied from November 2025 onwards. P1-P4 were baseline monitoring periods. Exceedances in P1-P4 are recorded for calibration reference only and do not constitute permit non-compliance events.
         </div>
         <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
             <thead>
               <tr style={{ borderBottom:`2px solid ${C.border}` }}>
                 {["Period","Hrs","Flow","Amb T","T Oper","Stack T","RH","VOC Act","VOC Pred","VOC Err","Bayes Resid (ln)","PAH Act","PAH Pred","PAH Err","Note"].map(h=>(
-                  <th key={h} style={{ textAlign:"left", padding:"5px 7px", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase" }}>{h}</th>
+                  <th key={h} style={{ textAlign:"left", padding:"5px 7px", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase" }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -3498,20 +3503,20 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
                       <td style={{ padding:"5px 7px", fontFamily:MONO, color:row.pah>PAH_ELV?C.red:C.teal, fontWeight:row.pah>PAH_ELV?700:400 }}>{row.pah!=null?row.pah.toLocaleString():<Badge text="Outstanding" color={C.red} />}</td>
                       <td style={{ padding:"5px 7px", fontFamily:MONO }}>{row.pahPred!=null?row.pahPred.toLocaleString():"--"}</td>
                       <td style={{ padding:"5px 7px", fontFamily:MONO, color:row.pahErr!=null&&Math.abs(row.pahErr)>30?C.amber:C.muted }}>{row.pahErr!=null?(row.pahErr>0?"+":"")+row.pahErr.toFixed(0)+"%":"--"}</td>
-                      <td style={{ padding:"5px 7px", fontSize:9, color:C.muted }}>
+                      <td style={{ padding:"5px 7px", fontSize:12, color:C.muted }}>
                         <div>{same?"same C/O":baseline?"baseline":""}</div>
                         {baseline && <div style={{ marginTop:4 }}><Badge text="Pre-ELV baseline" color={C.blue} /></div>}
                         {row.flowAnomalous && (
                           <div style={{ marginTop:4 }}>
                             <Badge text="Flow: unresolved" color={C.amber} />
-                            <button onClick={()=>setOpenAnomaly(openAnomaly===row.period?null:row.period)} style={{ marginLeft:6, border:`1px solid ${C.border}`, borderRadius:5, background:C.surface2, color:C.blue, cursor:"pointer", fontSize:10, fontWeight:700 }}>note</button>
+                            <button onClick={()=>setOpenAnomaly(openAnomaly===row.period?null:row.period)} style={{ marginLeft:6, border:`1px solid ${C.border}`, borderRadius:5, background:C.surface2, color:C.blue, cursor:"pointer", fontSize:12, fontWeight:700 }}>note</button>
                           </div>
                         )}
                       </td>
                     </tr>
                     {row.flowAnomalous && openAnomaly===row.period && (
                       <tr key={row.period + "-anomaly"} style={{ borderBottom:`1px solid ${C.border}`, background:TINT.amberBg }}>
-                        <td colSpan={15} style={{ padding:"9px 10px", fontSize:11, color:C.ink, lineHeight:1.55 }}>
+                        <td colSpan={15} style={{ padding:"9px 10px", fontSize:12, color:C.ink, lineHeight:1.55 }}>
                           P2 (March 2025, MCERTS ref ES-2093): Envirocare certified stack discharge flow of 3,659 m3/hr against 7,000-12,000 m3/hr across all other Config A periods. Standard Config A pulleys confirmed installed at time of test. No operational cause identified. Envirocare measurement stands as certified. Raw traverse data not available for retrospective review. Anomaly is formally unresolvable. P2 is excluded from flow-dependent Wheeler-Jonas EBCT calculations and from the stack temperature correction (T_operative) derivation. P2 VOC and PAH certified results are valid and are retained in regression calibration.
                         </td>
                       </tr>
@@ -3523,18 +3528,18 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
           </table>
         </div>
         <Fold title="About the calibration periods">
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>
           P1-P3: same carbon charge (cumulative -- not independent data points). P4-P14: tests on fresh beds introduced under the programme (P5/P6 share Bed 3; P9-P12 share Bed 6; P13/P14 share Bed 7). P9-P14 active hours are estimated at 21.7 hrs/day pending charge-log reconciliation. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses raw ambient temperature consistent with calibration basis. PAH model uses MCERTS stack temp.
         </div>
         </Fold>
-        <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>
           Bayes Resid = ln(measured) - ln(Ridge predicted). Sequential Bayesian update on intercept c uses these residuals as observations. Positive mean residual indicates systematic underprediction; Bayesian posterior will shift intercept upward.
         </div>
       </Card>
       <Card>
         <SectionTitle>Residual Analysis</SectionTitle>
         <h4 style={{ margin:"0 0 10px", color:C.ink }}>High-Residual Periods</h4>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))", gap:10 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap:10 }}>
           {highResiduals.map(row=>(
             <div key={row.period} style={{ border:`1px solid ${C.red}`, borderLeft:`4px solid ${C.red}`, borderRadius:8, padding:"10px 12px", background:TINT.redBg }}>
               <Badge text="High residual" color={C.red} />
@@ -3546,17 +3551,17 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
             </div>
           ))}
         </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:10 }}>These residuals are retained in calibration. They define the x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} uncertainty band applied to all predictions. Remove or exclude these periods only if a specific physical explanation justifies exclusion and is documented.</div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:10 }}>These residuals are retained in calibration. They define the x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} uncertainty band applied to all predictions. Remove or exclude these periods only if a specific physical explanation justifies exclusion and is documented.</div>
       </Card>
       <Card>
         <SectionTitle>VOC Model Curves</SectionTitle>
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={modelLines} margin={{ top:5, right:24, bottom:18, left:0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-            <XAxis dataKey="hrs" label={{ value:"Active Hours", position:"insideBottom", offset:-8, fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
-            <YAxis label={{ value:"VOC mg/m3", angle:-90, position:"insideLeft", fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} domain={[0,80]} />
+            <XAxis dataKey="hrs" label={{ value:"Active Hours", position:"insideBottom", offset:-8, fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
+            <YAxis label={{ value:"VOC mg/m3", angle:-90, position:"insideLeft", fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} domain={[0,80]} />
             <Tooltip formatter={(v,n)=>[typeof v==="number"?v.toFixed(1):v,n]} />
-            <ReferenceLine y={VOC_ELV} stroke={C.red} strokeDasharray="6 3" label={{ value:"ELV 20", fill:C.red, fontSize:10 }} />
+            <ReferenceLine y={VOC_ELV} stroke={C.red} strokeDasharray="6 3" label={{ value:"ELV 20", fill:C.red, fontSize:12 }} />
             {tSeries.map((t,i)=>(
               <Line key={t} type="monotone" dataKey={"voc_"+t} stroke={tColors[i]} strokeWidth={2} dot={false} name={t+"C"} />
             ))}
@@ -3570,7 +3575,7 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
             </div>
           ))}
         </div>
-        <div style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:6 }}>
+        <div style={{ fontSize:12, color:C.muted, textAlign:"center", marginTop:6 }}>
           Curve labels show ambient temperature. VOC physics is calculated at raw ambient temperature consistent with the regression calibration basis.
         </div>
       </Card>
@@ -3789,11 +3794,11 @@ function CarbonQualityTab({ carbonCoaData, onAdd, onDelete, onArchiveDocument, c
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={chartData} margin={{ top:5, right:24, bottom:18, left:0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-              <XAxis dataKey="label" tick={{ fontSize:10, fill:C.ink }} />
-              <YAxis domain={[700, "auto"]} tick={{ fontSize:10, fill:C.ink }} />
+              <XAxis dataKey="label" tick={{ fontSize:12, fill:C.ink }} />
+              <YAxis domain={[700, "auto"]} tick={{ fontSize:12, fill:C.ink }} />
               <Tooltip formatter={(v,n)=>[v,n]} labelFormatter={(label, payload)=>payload && payload[0] ? payload[0].payload.fullDate + " | " + payload[0].payload.batchRef : label} />
-              <ReferenceLine y={900} stroke={C.amber} label={{ value:"900 mg/g threshold", fill:C.amber, fontSize:10 }} />
-              <ReferenceLine y={800} stroke={C.red} label={{ value:"800 mg/g reject", fill:C.red, fontSize:10 }} />
+              <ReferenceLine y={900} stroke={C.amber} label={{ value:"900 mg/g threshold", fill:C.amber, fontSize:12 }} />
+              <ReferenceLine y={800} stroke={C.red} label={{ value:"800 mg/g reject", fill:C.red, fontSize:12 }} />
               <Line type="monotone" dataKey="iodine" stroke={C.rund} strokeWidth={2.5} dot={true} name="Iodine Number" />
             </LineChart>
           </ResponsiveContainer>
@@ -3801,12 +3806,12 @@ function CarbonQualityTab({ carbonCoaData, onAdd, onDelete, onArchiveDocument, c
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={densityChartData} margin={{ top:5, right:24, bottom:18, left:0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-                <XAxis dataKey="label" tick={{ fontSize:10, fill:C.ink }} />
-                <YAxis tick={{ fontSize:10, fill:C.ink }} />
+                <XAxis dataKey="label" tick={{ fontSize:12, fill:C.ink }} />
+                <YAxis tick={{ fontSize:12, fill:C.ink }} />
                 <Tooltip formatter={(v,n)=>[v,n]} labelFormatter={(label, payload)=>payload && payload[0] ? payload[0].payload.fullDate + " | " + payload[0].payload.batchRef : label} />
-                <ReferenceLine y={420} stroke={C.amber} label={{ value:"420", fill:C.amber, fontSize:10 }} />
-                <ReferenceLine y={480} stroke={C.amber} label={{ value:"480", fill:C.amber, fontSize:10 }} />
-                <ReferenceLine y={450} stroke={C.blue} label={{ value:"Model assumes 450 kg/m3", fill:C.blue, fontSize:10 }} />
+                <ReferenceLine y={420} stroke={C.amber} label={{ value:"420", fill:C.amber, fontSize:12 }} />
+                <ReferenceLine y={480} stroke={C.amber} label={{ value:"480", fill:C.amber, fontSize:12 }} />
+                <ReferenceLine y={450} stroke={C.blue} label={{ value:"Model assumes 450 kg/m3", fill:C.blue, fontSize:12 }} />
                 <Line type="monotone" dataKey="density" stroke={C.blue} strokeWidth={2} dot={true} name="Density kg/m3" />
               </LineChart>
             </ResponsiveContainer>
@@ -3817,11 +3822,11 @@ function CarbonQualityTab({ carbonCoaData, onAdd, onDelete, onArchiveDocument, c
         <Card>
           <SectionTitle>Batch Records</SectionTitle>
           <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
                 <tr style={{ borderBottom:`2px solid ${C.border}` }}>
                   {["Date","Batch Ref","Iodine (mg/g)","BET (m2/g)","Ash %","Moisture %","Density (kg/m3)","Hardness","pH","Mesh","Delete"].map(h=>(
-                    <th key={h} style={{ textAlign:"left", padding:"6px 7px", color:C.muted, fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em" }}>{h}</th>
+                    <th key={h} style={{ textAlign:"left", padding:"6px 7px", color:C.muted, fontSize:12, textTransform:"uppercase", letterSpacing:"0.06em" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -3936,7 +3941,7 @@ function LoggerDataSection({ loggerLog, onImport, onClearLogger, onUpdateCorrect
       </div>
       {loggerPreview && loggerPreview.rows.length > 0 && (
         <div style={{ marginTop:10 }}>
-          <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>
+          <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>
             Preview ready: {loggerPreview.rows.length} hourly rows.
           </div>
           <div style={{ display:"flex", gap:8 }}>
@@ -3952,12 +3957,15 @@ function LoggerDataSection({ loggerLog, onImport, onClearLogger, onUpdateCorrect
           <Input label="From" type="date" value={loggerRangeFrom} onChange={setLoggerRangeFrom} style={{ flex:"1 1 150px", marginBottom:0 }} />
           <Input label="To" type="date" value={loggerRangeTo} onChange={setLoggerRangeTo} style={{ flex:"1 1 150px", marginBottom:0 }} />
         </div>
+        {loggerChartData.length === 0 ? (
+          <div style={{ padding:"36px 16px", textAlign:"center", color:C.muted, fontSize:14, border:`1px dashed ${C.border}`, borderRadius:12 }}>No logger data yet. Import a Testo 176 T3 export above to see the temperature profile.</div>
+        ) : (
         <ResponsiveContainer width="100%" height={260}>
           <ComposedChart data={loggerChartData} margin={{ top:5, right:24, bottom:18, left:0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-            <XAxis dataKey="ts" tick={{ fontSize:9, fill:C.ink }} interval={Math.max(0, Math.floor(loggerChartData.length / 24))} />
-            <YAxis tick={{ fontSize:10, fill:C.ink }} />
-            <YAxis yAxisId="delta" orientation="right" tick={{ fontSize:10, fill:C.ink }} label={{ value:"Delta T (deg C)", angle:90, position:"insideRight", fontSize:10, fill:C.ink }} />
+            <XAxis dataKey="ts" tick={{ fontSize:12, fill:C.ink }} interval={Math.max(0, Math.floor(loggerChartData.length / 24))} />
+            <YAxis tick={{ fontSize:12, fill:C.ink }} />
+            <YAxis yAxisId="delta" orientation="right" tick={{ fontSize:12, fill:C.ink }} label={{ value:"Delta T (deg C)", angle:90, position:"insideRight", fontSize:12, fill:C.ink }} />
             <Tooltip formatter={(v,n)=>[v,n]} labelFormatter={(label, payload)=>payload && payload[0] ? payload[0].payload.fullTs : label} />
             <Legend />
             <Line type="monotone" dataKey="ambient" stroke={C.blue} strokeWidth={1.5} dot={false} name="Ambient (deg C)" />
@@ -3966,6 +3974,7 @@ function LoggerDataSection({ loggerLog, onImport, onClearLogger, onUpdateCorrect
             <Line yAxisId="delta" type="monotone" dataKey="deltaInlet" stroke={C.gold} strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="Amb-to-Inlet Delta (deg C)" />
           </ComposedChart>
         </ResponsiveContainer>
+        )}
         <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:10 }}>
           <StatPill label="Logger Records" value={(loggerLog||[]).length.toLocaleString()} unit="" sub="Total hourly entries" />
           <StatPill label="In Range" value={loggerChartData.length.toLocaleString()} unit="" />
@@ -3999,7 +4008,7 @@ function LoggerDataSection({ loggerLog, onImport, onClearLogger, onUpdateCorrect
                 Update model offset to {loggerStats.meanDelta.toFixed(1)} deg C
               </button>
             )}
-            <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>
+            <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
               Updating the correction factor will take effect immediately across
               all PAH scheduling calculations. The previous value can be restored
               manually in Settings. Only update if the logger data covers a
@@ -4056,21 +4065,25 @@ function ThermalLogChart({ thermalLog, settings }) {
         <Input label="From" type="date" value={rangeFrom} onChange={setRangeFrom} style={{ flex:"1 1 150px", marginBottom:0 }} />
         <Input label="To" type="date" value={rangeTo} onChange={setRangeTo} style={{ flex:"1 1 150px", marginBottom:0 }} />
       </div>
+      {chartData.length === 0 ? (
+        <div style={{ padding:"36px 16px", textAlign:"center", color:C.muted, fontSize:14, border:`1px dashed ${C.border}`, borderRadius:12 }}>No thermal readings in this range yet. Add a reading above to start the chart.</div>
+      ) : (
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={chartData} margin={{ top:5, right:24, bottom:18, left:0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-          <XAxis dataKey="ts" tick={{ fontSize:9, fill:C.ink }} />
-          <YAxis tick={{ fontSize:10, fill:C.ink }} />
-          <YAxis yAxisId="delta" orientation="right" tick={{ fontSize:10, fill:C.ink }} />
+          <XAxis dataKey="ts" tick={{ fontSize:12, fill:C.ink }} />
+          <YAxis tick={{ fontSize:12, fill:C.ink }} />
+          <YAxis yAxisId="delta" orientation="right" tick={{ fontSize:12, fill:C.ink }} />
           <Tooltip formatter={(v,n)=>[v,n]} labelFormatter={(label, payload)=>payload && payload[0] ? payload[0].payload.fullTs : label} />
           <Legend />
           <Line type="monotone" dataKey="ambient" stroke={C.blue} strokeWidth={1.5} dot={false} name="Ambient (deg C)" />
           <Line type="monotone" dataKey="inlet" stroke={C.red} strokeWidth={2} dot={false} name="Pre-bed inlet (deg C)" />
           <Line type="monotone" dataKey="outlet" stroke={C.teal} strokeWidth={1.5} dot={false} name="Post-bed outlet (deg C)" />
           <Line yAxisId="delta" type="monotone" dataKey="delta" stroke={C.gold} strokeWidth={1.5} strokeDasharray="4 2" dot={false} name="Ambient-to-inlet delta (deg C)" />
-          <ReferenceLine yAxisId="delta" y={settings.stackTempCorrectionC ?? FALLBACK_AMBIENT_TO_INLET_OFFSET_C} stroke={C.amber} strokeDasharray="3 3" label={{ value:"Current correction", fill:C.amber, fontSize:9 }} />
+          <ReferenceLine yAxisId="delta" y={settings.stackTempCorrectionC ?? FALLBACK_AMBIENT_TO_INLET_OFFSET_C} stroke={C.amber} strokeDasharray="3 3" label={{ value:"Current correction", fill:C.amber, fontSize:12 }} />
         </ComposedChart>
       </ResponsiveContainer>
+      )}
     </div>
   );
 }
@@ -4145,7 +4158,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
           {"P7 vs P8 dual-mechanism confirmation: P7 ran 1,387 hrs at 6.1 deg C ambient (T_op 16.4 deg C at +10.3 offset) -- VOC 5.9 mg/m3, PAH 340 ug/m3, both well inside ELV. P8 ran 1,495 hrs at 11.6 deg C ambient (T_op 21.9 deg C) -- VOC 105 mg/m3 (5.25x ELV, certified JOB-2865), PAH 295 ug/m3 (inside ELV). P4 ran 380 hrs at 22.5 deg C ambient (T_op 32.8 deg C) -- VOC 18.2 mg/m3 (inside ELV), PAH 5,369 ug/m3 (5.4x ELV). This dataset confirms the dual breakthrough mechanism: VOC failure is hours-driven (P8 at modest temperature); PAH failure is temperature-driven (P4 at low hours but high temperature). These are independent failure modes requiring separate scheduling tracks. PAH ambient threshold: ~" + pahAmbientThreshold_C.toFixed(1) + " deg C (model-derived, v1.6.0). Site-measured offset from Testo 925 spot readings: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C, delta +10.3 deg C. Model uses settings.stackTempCorrectionC for all live calculations; +10.3 deg C noted here as the directly measured site constant pending continuous logging validation."}
         </div>
         </Fold>
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>
           Seasonal PAH threshold references in this tab are fixed 500-hour comparison points for climatology only. Live Dashboard PAH status is recalculated at the current active-hours state.
         </div>
       </Card>
@@ -4155,8 +4168,8 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={windowChart} margin={{ top:5, right:24, bottom:18, left:0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-            <XAxis dataKey="temp" label={{ value:"Ambient Temp (C)", position:"insideBottom", offset:-8, fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
-            <YAxis label={{ value:"Safe hrs to ELV breach", angle:-90, position:"insideLeft", fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
+            <XAxis dataKey="temp" label={{ value:"Ambient Temp (C)", position:"insideBottom", offset:-8, fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
+            <YAxis label={{ value:"Safe hrs to ELV breach", angle:-90, position:"insideLeft", fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
             <Tooltip formatter={(v,n)=>[v.toLocaleString()+" hrs",n]} />
             <Line type="monotone" dataKey="vocDry"  stroke={C.teal}  strokeWidth={1.5} dot={false} name="RH 60%" strokeDasharray="5 2" />
             <Line type="monotone" dataKey="vocTyp"  stroke={C.rund} strokeWidth={2.5} dot={false} name="RH 80%" />
@@ -4175,7 +4188,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
             </div>
           ))}
         </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
           WJ fraction {(nf*100).toFixed(0)}% applied. Higher fraction = shorter window.
           {" "}Safe window is calculated at ambient temperature, consistent with the regression calibration
           basis (coefficient b was fitted against MCERTS ambient temperature measurements).
@@ -4195,7 +4208,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
           background: TINT.blueBg,
           border: "1px solid " + C.blue,
           borderRadius: 7,
-          fontSize: 11,
+          fontSize: 12,
           color: TINT.blueText,
           marginBottom: 12,
           lineHeight: 1.6,
@@ -4242,7 +4255,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
                   {s.season}
                 </div>
                 <div style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   color: C.muted,
                   marginBottom: 6,
                   lineHeight: 1.45,
@@ -4262,7 +4275,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
                 </div>
                 {s.pahGoverns && (
                   <div style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     color: C.red,
                     fontWeight: 800,
                     marginBottom: 4,
@@ -4271,7 +4284,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
                   </div>
                 )}
                 <div style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   color: pahOk ? C.teal : pahBand === "Moderate" ? C.amber : C.red,
                   fontWeight: 600,
                   marginBottom: 6,
@@ -4282,7 +4295,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
                 </div>
                 {!s.pahGoverns && (
                   <div style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     color: C.muted,
                     marginBottom: 4,
                   }}>
@@ -4290,7 +4303,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
                   </div>
                 )}
                 <div style={{
-                  fontSize: 10,
+                  fontSize: 12,
                   color: C.muted,
                   marginTop: 6,
                   lineHeight: 1.45,
@@ -4301,7 +4314,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
                 </div>
                 {s.pahNote && (
                   <div style={{
-                    fontSize: 10,
+                    fontSize: 12,
                     color: s.pahGoverns ? C.red : TINT.amberText,
                     marginTop: 6,
                     padding: "5px 7px",
@@ -4323,7 +4336,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
           background: TINT.redBg,
           border: "1px solid " + C.red,
           borderRadius: 7,
-          fontSize: 11,
+          fontSize: 12,
           color: TINT.redText,
           lineHeight: 1.6,
           fontWeight: 700,
@@ -4530,7 +4543,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
           <Input label="Cumulative Active Hrs" type="number" value={activeOverride!==""?activeOverride:autoActiveHrs} onChange={v=>setActiveOverride(v)} style={{ flex:"1 1 170px" }} />
           <div style={{ flex:"1 1 170px" }}>
             <label style={{
-              display:"block", fontSize:11, fontWeight:700,
+              display:"block", fontSize:12, fontWeight:700,
               color:C.muted, letterSpacing:"0.08em",
               textTransform:"uppercase", marginBottom:5
             }}>
@@ -4550,7 +4563,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
                 vocC
               ).toFixed(1)} mg/m3 (predicted)
             </div>
-            <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
+            <div style={{ fontSize:12, color:C.muted, marginTop:3 }}>
               Model prediction at current hours. Anchor scaling removed - see audit note.
             </div>
           </div>
@@ -4575,8 +4588,8 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
           }
           return null;
         })()}
-        <div style={{ fontSize:11, color:C.muted }}>Leave cumulative active hours as the auto value or type an override. Current VOC anchor scaling has been removed; the model prediction at start is shown for audit trail only.</div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>
+        <div style={{ fontSize:12, color:C.muted }}>Leave cumulative active hours as the auto value or type an override. Current VOC anchor scaling has been removed; the model prediction at start is shown for audit trail only.</div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>
           Auto baseline uses {autoEffectiveActiveHrs.toFixed(0)} effective hrs from {autoActiveHrs.toFixed(0)} raw hrs after fan-flow weighting since changeout.
         </div>
       </Card>
@@ -4591,12 +4604,12 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
         {mode==="flat" && <Input label="Flat Ambient Temp (C)" type="number" step="0.5" value={flatTemp} onChange={setFlatTemp} style={{ maxWidth:260 }} />}
         {(mode==="seasonal" || mode==="live") && (
           <div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(92px, 1fr))", gap:10 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(92px, 100%), 1fr))", gap:10 }}>
               {monthlyTemps.map((temp,i)=>(
                 <Input key={monthNames[i]} label={monthNames[i]} type="number" step="0.1" value={temp} onChange={v=>setMonthlyTemps(arr=>arr.map((x,idx)=>idx===i?v:x))} style={{ marginBottom:0 }} />
               ))}
             </div>
-            <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Monthly ambient values are editable climatological averages for Boston, Lincolnshire.</div>
+            <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Monthly ambient values are editable climatological averages for Boston, Lincolnshire.</div>
           </div>
         )}
         {mode==="live" && <div style={{ marginTop:10, padding:"9px 12px", borderRadius:7, background:(liveTemps&&liveTemps.length)?TINT.safeBg:TINT.amberBg, color:(liveTemps&&liveTemps.length)?TINT.safeText:TINT.amberText, fontSize:12, fontWeight:600 }}>{liveStatus || "Live mode uses Open-Meteo days 1-7, then seasonal climatology."}</div>}
@@ -4608,7 +4621,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
       <Card>
         <SectionTitle>PAH Temperature Scenario Override</SectionTitle>
         <Input label="PAH Stack Temp Override (degC) - leave blank to use regression estimate" type="number" step="0.5" min={15} max={40} value={pahTempOverride} onChange={v=>setPahTempOverride(Number.isFinite(v)?v:"")} style={{ maxWidth:420 }} />
-        <div style={{ fontSize:11, color:C.muted, marginTop:-6 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:-6 }}>
           Use this to model worst-case PAH exposure in high-summer operations or to test a specific monitored stack temperature against the PAH model.
         </div>
       </Card>
@@ -4621,16 +4634,16 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
           <StatPill label="Predicted PAH Breach" value={forecast.pahBreach?forecast.pahBreach.date:"--"} unit="" color={C.red} sub={forecast.pahBreach?`predictPAH = ${forecast.pahBreach.pahPred.toLocaleString()} ug/m3 at breach`:"Not within horizon"} />
           <StatPill label="Binding Constraint" value={binding.type} unit="" color={binding.type==="PAH"?C.red:binding.type==="VOC"?C.amber:C.teal} sub="Earlier predicted breach" />
           <StatPill label="Latest Stack Test" value={latestTestDate} unit="" color={C.blue} sub={`${preTestBufferDays} days / ${preTestBufferActiveHrs} active hrs buffer (whichever later)`} />
-          <StatPill label="Latest Changeout" value={binding.row?binding.row.date:"--"} unit="" color={binding.type==="PAH"?C.red:C.amber} sub="Binding breach date" />
+          <StatPill label="Change carbon by" value={binding.row?binding.row.date:"--"} unit="" color={binding.type==="PAH"?C.red:C.amber} sub="Binding breach date" />
         </div>
-        <div style={{ fontSize:11, color:TINT.redText, background:TINT.redBg, border:`1px solid ${C.red}`, borderRadius:7, padding:"9px 12px", marginTop:10, lineHeight:1.55 }}>
+        <div style={{ fontSize:12, color:TINT.redText, background:TINT.redBg, border:`1px solid ${C.red}`, borderRadius:7, padding:"9px 12px", marginTop:10, lineHeight:1.55 }}>
           PAH breach date shown is the central model estimate. Uncertainty band: x{Math.exp(pahC.rmse).toFixed(2)} multiplicative (RMSE in log space). PAH model is temperature-dominant - uncertainty in the ambient-to-stack temperature relationship is the primary source of error, not hours accumulation.
         </div>
         <div style={{ marginTop:10 }}><Btn onClick={exportSchedule} variant="gold" small>Export test schedule</Btn></div>
-        <div style={{ fontSize:11, color:settings.useConservativeRH?C.amber:C.muted, marginTop:8 }}>
+        <div style={{ fontSize:12, color:settings.useConservativeRH?C.amber:C.muted, marginTop:8 }}>
           {settings.useConservativeRH ? "Humidity: Conservative mode (90% RH) - BAT-aligned posture" : "Humidity: Average mode (80% RH) - switch to Conservative for compliance scheduling"}
         </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Confidence band: x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} (effective RMSE in log space, consistent with Dashboard forecast). R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"}. Treat as risk-informed planning estimate.</div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Confidence band: x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} (effective RMSE in log space, consistent with Dashboard forecast). R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"}. Treat as risk-informed planning estimate.</div>
       </Card>
 
       <Card>
@@ -4639,13 +4652,13 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
           <LineChart data={chartRows} margin={{ top:8, right:24, bottom:18, left:0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
             {highZones.map((z,i)=><ReferenceArea key={i} x1={z.start} x2={z.end} fill={C.red} fillOpacity={0.08} />)}
-            <XAxis dataKey="day" label={{ value:"Days from today", position:"insideBottom", offset:-8, fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
-            <YAxis label={{ value:"VOC mg/m3", angle:-90, position:"insideLeft", fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
+            <XAxis dataKey="day" label={{ value:"Days from today", position:"insideBottom", offset:-8, fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
+            <YAxis domain={[0, VOC_ELV * 4]} allowDataOverflow label={{ value:"VOC mg/m3", angle:-90, position:"insideLeft", fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
             <Tooltip formatter={(v,n)=>[typeof v==="number"?v.toFixed(1):v,n]} />
-            <ReferenceLine y={VOC_ELV} stroke={C.red} strokeDasharray="6 3" label={{ value:"VOC ELV 20", fill:C.red, fontSize:10 }} />
-            {forecast.sameBedLimit && <ReferenceLine x={forecast.sameBedLimit.day} stroke={C.amber} strokeDasharray="4 2" label={{ value:"1155 hr limit", fill:C.amber, fontSize:10 }} />}
-            {binding.row && <ReferenceLine x={Math.max(0,binding.row.day-effectiveBufferDays)} stroke={C.blue} strokeDasharray="3 3" label={{ value:"Latest test", fill:C.blue, fontSize:10 }} />}
-            {binding.row && <ReferenceLine x={binding.row.day} stroke={binding.type==="PAH"?C.red:C.amber} strokeDasharray="5 2" label={{ value:"Breach", fill:binding.type==="PAH"?C.red:C.amber, fontSize:10 }} />}
+            <ReferenceLine y={VOC_ELV} stroke={C.red} strokeDasharray="6 3" label={{ value:"VOC ELV 20", fill:C.red, fontSize:12 }} />
+            {forecast.sameBedLimit && <ReferenceLine x={forecast.sameBedLimit.day} stroke={C.amber} strokeDasharray="4 2" label={{ value:"1155 hr limit", fill:C.amber, fontSize:12 }} />}
+            {binding.row && <ReferenceLine x={Math.max(0,binding.row.day-effectiveBufferDays)} stroke={C.blue} strokeDasharray="3 3" label={{ value:"Latest test", fill:C.blue, fontSize:12 }} />}
+            {binding.row && <ReferenceLine x={binding.row.day} stroke={binding.type==="PAH"?C.red:C.amber} strokeDasharray="5 2" label={{ value:"Breach", fill:binding.type==="PAH"?C.red:C.amber, fontSize:12 }} />}
             <Area type="monotone" dataKey="vocHi" stroke="none" fill={C.amber} fillOpacity={0.12} name="Upper band" />
             <Area type="monotone" dataKey="vocLo" stroke="none" fill={C.surface} fillOpacity={0.9} name="Lower band" />
             <Line type="monotone" dataKey="vocMid" stroke={C.rund} strokeWidth={2.5} dot={false} name="Predicted VOC" />
@@ -4653,7 +4666,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
             <Line type="monotone" dataKey="vocLo" stroke={C.blue} strokeWidth={1} dot={false} strokeDasharray="4 2" name="Lower confidence" />
           </LineChart>
         </ResponsiveContainer>
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Red background indicates days where T_operative is at or above 26C and PAH is high risk. The 1,155-hr same-bed limit line is shown only when Same carbon is enabled in Settings. It does not apply to fresh carbon charges.</div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Red background indicates days where T_operative is at or above 26C and PAH is high risk. The 1,155-hr same-bed limit line is shown only when Same carbon is enabled in Settings. It does not apply to fresh carbon charges.</div>
       </Card>
 
       <Card>
@@ -4661,11 +4674,11 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
         <ResponsiveContainer width="100%" height={240}>
           <ComposedChart data={chartRows} margin={{ top:8, right:24, bottom:18, left:0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-            <XAxis dataKey="day" label={{ value:"Days from today", position:"insideBottom", offset:-8, fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
-            <YAxis label={{ value:"PAH ug/m3", angle:-90, position:"insideLeft", fontSize:10, fill:C.ink }} tick={{ fontSize:10, fill:C.ink }} />
+            <XAxis dataKey="day" label={{ value:"Days from today", position:"insideBottom", offset:-8, fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
+            <YAxis domain={[0, PAH_ELV * 4]} allowDataOverflow label={{ value:"PAH ug/m3", angle:-90, position:"insideLeft", fontSize:12, fill:C.ink }} tick={{ fontSize:12, fill:C.ink }} />
             <Tooltip formatter={(v,n)=>[typeof v==="number"?v.toLocaleString():v,n]} />
-            <ReferenceLine y={PAH_ELV} stroke={C.red} strokeDasharray="6 3" label={{ value:"PAH ELV 1 mg/Nm3", fill:C.red, fontSize:10 }} />
-            {forecast.pahBreach && <ReferenceLine x={forecast.pahBreach.day} stroke={C.red} strokeDasharray="5 2" label={{ value:"PAH breach", fill:C.red, fontSize:10 }} />}
+            <ReferenceLine y={PAH_ELV} stroke={C.red} strokeDasharray="6 3" label={{ value:"PAH ELV 1 mg/Nm3", fill:C.red, fontSize:12 }} />
+            {forecast.pahBreach && <ReferenceLine x={forecast.pahBreach.day} stroke={C.red} strokeDasharray="5 2" label={{ value:"PAH breach", fill:C.red, fontSize:12 }} />}
             <Area type="monotone" dataKey="pahPredHi" stroke="none" fill={C.red} fillOpacity={0.08} name="Upper (x1 RMSE)" />
             <Area type="monotone" dataKey="pahPredLo" stroke="none" fill={C.surface} fillOpacity={0.9} name="Lower (x1 RMSE)" />
             <Line type="monotone" dataKey="pahPred" stroke={C.red} strokeWidth={2.5} dot={false} name="Predicted PAH" />
@@ -4673,24 +4686,24 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
             <Line type="monotone" dataKey="pahPredLo" stroke={C.blue} strokeWidth={1} strokeDasharray="4 2" dot={false} name="Lower confidence" />
           </ComposedChart>
         </ResponsiveContainer>
-        <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
           Confidence band: x{Math.exp(pahC && pahC.rmse != null ? pahC.rmse : PAH_RMSE_LOG).toFixed(3)} (RMSE in log space = {(pahC && pahC.rmse != null ? pahC.rmse : PAH_RMSE_LOG).toFixed(4)}). The band width reflects the scatter in the fresh-carbon PAH calibration (R2={pahC && pahC.r2 != null ? pahC.r2.toFixed(3) : "default"}). PAH predictions are sensitive to the ambient-to-stack temperature estimate; this uncertainty is the primary risk factor, not model RMSE. Stack temp override available above.
         </div>
       </Card>
 
       <Card>
         <SectionTitle>Temperature Profile Used</SectionTitle>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:8, maxHeight:310, overflowY:"auto", paddingRight:4 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(130px, 100%), 1fr))", gap:8, maxHeight:310, overflowY:"auto", paddingRight:4 }}>
           {forecast.rows.slice(0,120).map(row=>(
             <div key={row.day} style={{ border:`1px solid ${C.border}`, borderRadius:7, padding:"8px 10px", background:row.pahRisk==="High"?C.red:row.pahRisk==="Elevated"?TINT.redBg:row.pahRisk==="Moderate"?TINT.amberBg:C.surface2, color:row.pahRisk==="High"?TINT.redText:C.ink }}>
-              <div style={{ fontSize:10, color:C.muted, fontWeight:700 }}>Day {row.day} | {row.date}</div>
+              <div style={{ fontSize:12, color:C.muted, fontWeight:700 }}>Day {row.day} | {row.date}</div>
               <div style={{ fontSize:12, fontFamily:MONO, color:C.ink }}>Amb {row.ambient}C</div>
               <div style={{ fontSize:12, fontFamily:MONO, color:row.tOperative>=26?C.red:C.blue }}>T_op {row.tOperative}C</div>
-              <div style={{ fontSize:10, color:C.muted }}>{row.source} | PAH {row.pahRisk}</div>
+              <div style={{ fontSize:12, color:C.muted }}>{row.source} | PAH {row.pahRisk}</div>
             </div>
           ))}
         </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Showing first 120 projected days. Forecast calculation continues until the first binding breach or 730 days.</div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Showing first 120 projected days. Forecast calculation continues until the first binding breach or 730 days.</div>
       </Card>
 
       <Card>
@@ -4700,7 +4713,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
           This forecast is derived from a multivariate VOC regression model calibrated against independent stack test periods (R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"}). PAH breach dates use the calibrated predictPAH model. Predictions should be treated as risk-informed planning estimates, not guaranteed changeout intervals. Model accuracy will improve as additional stack test periods are calibrated. Active ambient-to-inlet offset of +{activeAmbientToInletOffset.toFixed(1)}C applied to all ambient inputs. This tool supports but does not replace MCERTS-certified stack testing as the primary compliance verification method. Anchor scaling from a current VOC reading has been removed: a proportional residual at the current hours count cannot be assumed to hold across the forecast horizon under a log-linear model structure, and the bias was most severe at high residual periods such as P8 (105 mg/m3 certified, 5.25x ELV). The unanchored regression prediction is used throughout.
         </div>
         </Fold>
-        <div style={{ marginTop:10, padding:"10px 14px", background:settings.useConservativeRH?TINT.safeBg:TINT.amberBg, border:`1px solid ${settings.useConservativeRH?C.teal:C.amber}`, borderRadius:7, color:settings.useConservativeRH?TINT.safeText:TINT.amberText, fontSize:11, lineHeight:1.55, fontWeight:700 }}>
+        <div style={{ marginTop:10, padding:"10px 14px", background:settings.useConservativeRH?TINT.safeBg:TINT.amberBg, border:`1px solid ${settings.useConservativeRH?C.teal:C.amber}`, borderRadius:7, color:settings.useConservativeRH?TINT.safeText:TINT.amberText, fontSize:12, lineHeight:1.55, fontWeight:700 }}>
           Humidity assumption: {settings.useConservativeRH ? "Conservative mode ON - 90% RH applied to all forecast periods. BAT-aligned for Boston, Lincolnshire." : "Conservative mode OFF - 80% RH average applied. For compliance scheduling, enable Conservative Humidity Mode in Settings."}
         </div>
       </Card>
@@ -4729,7 +4742,7 @@ function BATComplianceTab({ settings, onChange, canEdit, stackData }) {
         <SectionTitle>STS BREF BAT 51/52 Compliance Status | Decision (EU) 2020/2009 | Permit EPR/A2/1</SectionTitle>
         <div style={{ overflowX:"auto" }}>
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-            <thead><tr>{["BAT Reference","Measure","Status","Notes"].map(h=><th key={h} style={{ textAlign:"left", padding:"7px 9px", borderBottom:`2px solid ${C.border}`, color:C.muted, fontSize:10, textTransform:"uppercase" }}>{h}</th>)}</tr></thead>
+            <thead><tr>{["BAT Reference","Measure","Status","Notes"].map(h=><th key={h} style={{ textAlign:"left", padding:"7px 9px", borderBottom:`2px solid ${C.border}`, color:C.muted, fontSize:12, textTransform:"uppercase" }}>{h}</th>)}</tr></thead>
             <tbody>{rows.map((r,i)=><tr key={i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?C.ivory:C.surface }}>
               <td style={{ padding:"7px 9px", fontWeight:700 }}>{r[0]}</td><td style={{ padding:"7px 9px" }}>{r[1]}</td><td style={{ padding:"7px 9px" }}><Badge text={r[2]} color={r[2]==="IMPLEMENTED"?C.teal:r[2]==="MONITORING"?C.amber:C.red} /></td><td style={{ padding:"7px 9px", color:C.muted }}>{r[3]}</td>
             </tr>)}</tbody>
@@ -4747,7 +4760,7 @@ function BATComplianceTab({ settings, onChange, canEdit, stackData }) {
           <Input label="Last reviewed" type="date" value={settings.batReviewDate} onChange={v=>onChange("batReviewDate",v)} style={{ flex:"1 1 180px" }} disabled={!canEdit} />
           <Input label="Reviewed by" value={settings.batReviewedBy} onChange={v=>onChange("batReviewedBy",v)} style={{ flex:"1 1 220px" }} disabled={!canEdit} />
         </div>
-        {!canEdit ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Viewer mode: BAT review fields are locked.</div> : null}
+        {!canEdit ? <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Viewer mode: BAT review fields are locked.</div> : null}
       </Card>
     </div>
   );
@@ -4755,7 +4768,7 @@ function BATComplianceTab({ settings, onChange, canEdit, stackData }) {
 
 function ThermalStateBadge({ state }) {
   const color = plantStateColor(state);
-  return <span style={{ display:"inline-block", background:color, color:C.onAccent, borderRadius:2, fontSize:9, fontWeight:800, letterSpacing:"0.06em", padding:"3px 7px", textTransform:"uppercase", fontFamily:MONO }}>{state || "--"}</span>;
+  return <span style={{ display:"inline-block", background:color, color:C.onAccent, borderRadius:2, fontSize:12, fontWeight:800, letterSpacing:"0.06em", padding:"3px 7px", textTransform:"uppercase", fontFamily:MONO }}>{state || "--"}</span>;
 }
 
 function ThermalMonitoringLogSection({ thermalLog, thermalStats, onAdd, onDelete, canEdit, settings }) {
@@ -4822,14 +4835,14 @@ function ThermalMonitoringLogSection({ thermalLog, thermalStats, onAdd, onDelete
     const a = document.createElement("a");
     a.href = url; a.download = `thermal-log-${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url);
   };
-  const fieldLabel = { display:"block", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5 };
+  const fieldLabel = { display:"block", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5 };
   const fieldBase = { width:"100%", height:38, padding:"8px 10px", border:`1px solid ${C.border}`, borderRadius:7, background:C.surface, color:C.ink, boxSizing:"border-box" };
-  const errorText = key => errors[key] ? <div style={{ fontSize:10, color:C.red, marginTop:3 }}>{errors[key]}</div> : null;
+  const errorText = key => errors[key] ? <div style={{ fontSize:12, color:C.red, marginTop:3 }}>{errors[key]}</div> : null;
 
   return (
-    <div style={{ marginTop:14, border:`1px solid ${C.border}`, borderRadius:8, background:C.ivory }}>
-      <div style={{ width:"100%", textAlign:"left", padding:"11px 14px", color:C.ink, fontWeight:800, fontSize:12, letterSpacing:"0.08em", textTransform:"uppercase" }}>
-        Thermal Monitoring Log
+    <div style={{ marginBottom:18, border:`1px solid ${C.border}`, borderRadius:14, background:C.surface, padding:"8px 8px 4px" }}>
+      <div style={{ boxSizing:"border-box", width:"100%", textAlign:"left", padding:"12px 14px 4px", color:C.ink, fontFamily:HEAD_FONT, fontWeight:600, fontSize:16 }}>
+        Thermal monitoring log
       </div>
       <div style={{ padding:"0 14px 14px" }}>
           {warningActive && !dismissThermalRisk && (
@@ -4838,10 +4851,10 @@ function ThermalMonitoringLogSection({ thermalLog, thermalStats, onAdd, onDelete
               <button onClick={()=>setDismissThermalRisk(true)} style={{ border:"none", background:"transparent", color:TINT.amberText, cursor:"pointer", fontWeight:900 }}>x</button>
             </div>
           )}
-          <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
+          <div style={{ fontSize:12, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
             Testo 925 Type K spot readings. Accuracy +/- 0.5 degrees C. Log instantaneous ambient, pre-bed inlet, post-bed outlet, and concurrent plant state.
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(190px, 1fr))", gap:10, alignItems:"start" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(190px, 100%), 1fr))", gap:10, alignItems:"start" }}>
             <div><label style={fieldLabel}>Date and Time</label><input type="datetime-local" value={form.timestamp} onChange={e=>updateForm("timestamp",e.target.value)} disabled={!canEdit} style={{ ...fieldBase, background:canEdit?C.surface:C.surface3, color:canEdit?C.ink:C.muted, cursor:canEdit?"text":"not-allowed" }} />{errorText("timestamp")}</div>
             <div><label style={fieldLabel}>Ambient Temp (degrees C)</label><input type="number" step="0.1" min="-10" max="50" value={form.ambientTemp} onChange={e=>updateForm("ambientTemp",e.target.value)} disabled={!canEdit} style={{ ...fieldBase, background:canEdit?C.surface:C.surface3, color:canEdit?C.ink:C.muted, cursor:canEdit?"text":"not-allowed" }} />{errorText("ambientTemp")}</div>
             <div><label style={fieldLabel}>Pre-Bed Inlet Temp (degrees C)</label><input type="number" step="0.1" min="0" max="80" value={form.preBedTemp} onChange={e=>updateForm("preBedTemp",e.target.value)} disabled={!canEdit} style={{ ...fieldBase, background:canEdit?C.surface:C.surface3, color:canEdit?C.ink:C.muted, cursor:canEdit?"text":"not-allowed" }} />{errorText("preBedTemp")}</div>
@@ -4854,7 +4867,7 @@ function ThermalMonitoringLogSection({ thermalLog, thermalStats, onAdd, onDelete
             <Btn onClick={handleSubmit} variant="rund" small disabled={!canEdit}>Add Thermal Reading</Btn>
             <Btn onClick={exportThermalCsv} variant="ghost" small>Export thermal CSV</Btn>
           </div>
-          {!canEdit ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Viewer mode: thermal log entry and deletion are locked.</div> : null}
+          {!canEdit ? <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Viewer mode: thermal log entry and deletion are locked.</div> : null}
           {thermalStats.ready && (
             <div style={{ marginTop:12, padding:"10px 12px", background:TINT.blueBg, border:`1px solid ${C.blue}`, borderRadius:7, fontSize:12, color:TINT.blueText, lineHeight:1.6 }}>
               <strong>Site Thermal Transfer Profile</strong><br />
@@ -4867,8 +4880,8 @@ function ThermalMonitoringLogSection({ thermalLog, thermalStats, onAdd, onDelete
           )}
           <ThermalLogChart thermalLog={sortedEntries} settings={settings} />
           <div style={{ overflowX:"auto", marginTop:12 }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
-              <thead><tr>{["Date / Time","Ambient","Pre-Bed","Post-Bed","Amb to Inlet Delta T","Exotherm","P1 State","P2 State","Notes","Delete"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 7px", color:C.muted, fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <thead><tr>{["Date / Time","Ambient","Pre-Bed","Post-Bed","Amb to Inlet Delta T","Exotherm","P1 State","P2 State","Notes","Delete"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 7px", color:C.muted, fontSize:12, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
               <tbody>{sortedEntries.map(entry=>{
                 const derived = thermalDerived(entry);
                 const noteText = String(entry.notes || "");
@@ -4936,12 +4949,14 @@ function ThermalAnalysisTab({ thermalLog, thermalStats, onAddThermalEntry, onDel
 }
 
 function LoginScreen({ onLogin, authError, adminStatus }) {
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState("");
 
-  const handleSubmit = async () => {
+  const handleSubmit = async e => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!username || !password) { setLocalError("Enter your username and password."); return; }
     setSubmitting(true);
     setLocalError("");
     try {
@@ -4953,31 +4968,34 @@ function LoginScreen({ onLogin, authError, adminStatus }) {
   };
 
   const message = localError || authError || "";
+  const input = { height:46, padding:"0 14px", borderRadius:10, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:15, fontFamily:"inherit", boxSizing:"border-box", width:"100%" };
 
   return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, color:C.ink, padding:"24px", fontFamily:"Inter, system-ui, sans-serif" }}>
-      <div style={{ width:"100%", maxWidth:520, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 10px 28px rgba(28,38,54,0.09)", padding:"26px 28px" }}>
-        <div style={{ fontSize:22, fontWeight:800, color:C.header, marginBottom:8 }}>Carbon Bed Shared Platform</div>
-        <div style={{ fontSize:13, color:C.muted, lineHeight:1.6, marginBottom:18 }}>
-          Sign in to access the shared live model, operator audit trail, retained documents, and automatic charge imports.
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, color:C.ink, padding:"24px", fontFamily:"Inter, system-ui, sans-serif", boxSizing:"border-box" }}>
+      <form onSubmit={handleSubmit} style={{ width:"100%", maxWidth:420, background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"30px 28px", boxSizing:"border-box" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18 }}>
+          <svg width="38" height="38" viewBox="0 0 34 34" aria-hidden="true"><path d="M17 2 30 9.5v15L17 32 4 24.5v-15z" fill="none" stroke={C.rund} strokeWidth="2" /><path d="M11 13.5h12M11 17h12M11 20.5h12" stroke={C.rund} strokeWidth="2" strokeLinecap="round" /></svg>
+          <div>
+            <div style={{ fontFamily:HEAD_FONT, fontSize:20, fontWeight:700 }}>Carbon Bed Model</div>
+            <div style={{ fontSize:13, color:C.muted }}>Calders &amp; Grandidge, Boston - A4 abatement</div>
+          </div>
         </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-          <Input label="Username" value={username} onChange={setUsername} />
-          <Input label="Password" type="password" value={password} onChange={setPassword} />
+        <div style={{ display:"grid", gap:14 }}>
+          <label style={{ display:"grid", gap:6, fontSize:13, fontWeight:600 }}>Username
+            <input type="text" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} style={input} />
+          </label>
+          <label style={{ display:"grid", gap:6, fontSize:13, fontWeight:600 }}>Password
+            <input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} style={input} />
+          </label>
         </div>
         {message ? (
-          <div style={{ marginTop:12, padding:"9px 12px", borderRadius:7, background:TINT.redBg, border:`1px solid ${C.red}`, color:TINT.redText, fontSize:12, fontWeight:700 }}>
-            {message}
-          </div>
+          <div role="alert" style={{ marginTop:14, padding:"10px 12px", borderRadius:10, background:TINT.redBg, color:C.red, fontSize:14, fontWeight:600 }}>{message}</div>
         ) : null}
-        <div style={{ marginTop:16, display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
-          <Btn onClick={()=>{ void handleSubmit(); }} variant="rund">{submitting ? "Signing in..." : "Sign in"}</Btn>
-        </div>
-        <div style={{ marginTop:16, fontSize:11, color:C.muted, lineHeight:1.55 }}>
-          Bootstrap admin username: `{adminStatus && adminStatus.bootstrapAdminUsername ? adminStatus.bootstrapAdminUsername : "admin"}`.
-          {adminStatus && adminStatus.usingDefaultAdminPassword ? " Default bootstrap password is still active and must be changed immediately after first login." : ""}
-        </div>
-      </div>
+        <button type="submit" disabled={submitting} style={{ marginTop:18, width:"100%", height:46, borderRadius:10, border:"none", background:C.rund, color:C.onAccent, fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>{submitting ? "Signing in..." : "Sign in"}</button>
+        {adminStatus && adminStatus.usingDefaultAdminPassword ? (
+          <div style={{ marginTop:14, fontSize:13, color:C.amber, lineHeight:1.5 }}>The default administrator password is still active. Change it straight after signing in.</div>
+        ) : null}
+      </form>
     </div>
   );
 }
@@ -5024,13 +5042,13 @@ function SecurityCard({ authState, onLogout, onChangePassword, onCreateUser, adm
       </div>
       {authState.user && authState.user.role === "admin" ? (
         <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:11, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>Create Platform User</div>
+          <div style={{ fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>Create Platform User</div>
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"end" }}>
             <Input label="Username" value={userForm.username} onChange={v=>setUserForm(f=>({...f,username:v}))} style={{ flex:"1 1 150px" }} />
             <Input label="Display Name" value={userForm.displayName} onChange={v=>setUserForm(f=>({...f,displayName:v}))} style={{ flex:"1 1 180px" }} />
             <Input label="Temporary Password" type="password" value={userForm.password} onChange={v=>setUserForm(f=>({...f,password:v}))} style={{ flex:"1 1 180px" }} />
             <div style={{ flex:"1 1 140px" }}>
-              <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5 }}>Role</label>
+              <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5 }}>Role</label>
               <select value={userForm.role} onChange={e=>setUserForm(f=>({...f,role:e.target.value}))} style={{ width:"100%", height:38, padding:"8px 12px", border:`1px solid ${C.border}`, borderRadius:7, fontSize:13, background:C.surface2, color:C.ink, boxSizing:"border-box" }}>
                 <option value="operator">Operator</option>
                 <option value="viewer">Viewer</option>
@@ -5041,8 +5059,8 @@ function SecurityCard({ authState, onLogout, onChangePassword, onCreateUser, adm
           </div>
           {adminData.users.length > 0 ? (
             <div style={{ marginTop:12, overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
-                <thead><tr>{["Username","Display","Role","Created","Last Login"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 8px", color:C.muted, fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                <thead><tr>{["Username","Display","Role","Created","Last Login"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 8px", color:C.muted, fontSize:12, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
                 <tbody>{adminData.users.map(user => <tr key={user.id} style={{ borderBottom:`1px solid ${C.border}` }}><td style={{ padding:"6px 8px", fontFamily:MONO }}>{user.username}</td><td style={{ padding:"6px 8px" }}>{user.displayName}</td><td style={{ padding:"6px 8px" }}>{user.role}</td><td style={{ padding:"6px 8px", fontFamily:MONO }}>{formatSyncStamp(user.createdAt)}</td><td style={{ padding:"6px 8px", fontFamily:MONO }}>{user.lastLoginAt ? formatSyncStamp(user.lastLoginAt) : "--"}</td></tr>)}</tbody>
               </table>
             </div>
@@ -5065,22 +5083,22 @@ function DocumentLibraryCard({ documents, audit, adminError, isAdmin, onDownload
       {adminError ? <div style={{ marginBottom:10, fontSize:12, color:C.red, fontWeight:700 }}>{adminError}</div> : null}
       {documents.length > 0 ? (
         <div style={{ overflowX:"auto", marginBottom:12 }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
-            <thead><tr>{["Type","File","Uploaded","By","Size"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 8px", color:C.muted, fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <thead><tr>{["Type","File","Uploaded","By","Size"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 8px", color:C.muted, fontSize:12, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
             <tbody>{documents.map(doc => <tr key={doc.id} style={{ borderBottom:`1px solid ${C.border}` }}><td style={{ padding:"6px 8px" }}>{doc.category}</td><td style={{ padding:"6px 8px" }}><button onClick={()=>{ void onDownload(doc); }} style={{ border:"none", background:"transparent", color:C.blue, cursor:"pointer", padding:0, fontWeight:700 }}>{doc.fileName}</button></td><td style={{ padding:"6px 8px", fontFamily:MONO }}>{formatSyncStamp(doc.uploadedAt)}</td><td style={{ padding:"6px 8px" }}>{doc.uploadedBy ? doc.uploadedBy.username : "--"}</td><td style={{ padding:"6px 8px", fontFamily:MONO }}>{Math.round((doc.sizeBytes || 0) / 1024)} KB</td></tr>)}</tbody>
           </table>
         </div>
-      ) : <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>No archived documents yet.</div>}
+      ) : <div style={{ fontSize:12, color:C.muted, marginBottom:12 }}>No archived documents yet.</div>}
       {isAdmin ? (
         audit.length > 0 ? (
           <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
-              <thead><tr>{["When","Action","Actor","Detail"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 8px", color:C.muted, fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <thead><tr>{["When","Action","Actor","Detail"].map(h=><th key={h} style={{ textAlign:"left", padding:"6px 8px", color:C.muted, fontSize:12, textTransform:"uppercase", letterSpacing:"0.06em", borderBottom:`2px solid ${C.border}` }}>{h}</th>)}</tr></thead>
               <tbody>{audit.slice(0, 20).map(item => <tr key={item.id} style={{ borderBottom:`1px solid ${C.border}` }}><td style={{ padding:"6px 8px", fontFamily:MONO }}>{formatSyncStamp(item.at)}</td><td style={{ padding:"6px 8px" }}>{item.action}</td><td style={{ padding:"6px 8px" }}>{item.actor ? `${item.actor.username} (${item.actor.role})` : "--"}</td><td style={{ padding:"6px 8px", color:C.muted }}>{JSON.stringify(item.detail || {})}</td></tr>)}</tbody>
             </table>
           </div>
-        ) : <div style={{ fontSize:11, color:C.muted }}>No audit events yet.</div>
-      ) : <div style={{ fontSize:11, color:C.muted }}>Audit log is visible to platform admins only.</div>}
+        ) : <div style={{ fontSize:12, color:C.muted }}>No audit events yet.</div>
+      ) : <div style={{ fontSize:12, color:C.muted }}>Audit log is visible to platform admins only.</div>}
     </Card>
   );
 }
@@ -5099,7 +5117,7 @@ function DocumentLibraryTab({ adminData, isAdmin, onDownloadDocument }) {
   );
 }
 
-function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange, vocC, pahC, platformMeta, onExportBackup, onImportBackup, onResetPlatform, onRunChargeImportScan, authState, onLogout, onChangePassword, onCreateUser, adminData, onDownloadDocument }) {
+function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange, onRecordChangeout, vocC, pahC, platformMeta, onExportBackup, onImportBackup, onResetPlatform, onRunChargeImportScan, authState, onLogout, onChangePassword, onCreateUser, adminData, onDownloadDocument }) {
   const [openFanNote, setOpenFanNote] = useState(null);
   const canEdit = !!(authState && authState.user && authState.user.role !== "viewer");
   const isAdmin = !!(authState && authState.user && authState.user.role === "admin");
@@ -5117,106 +5135,18 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
   return (
     <div>
       <Card>
-        <SectionTitle>Fan Specification (Confirmed Nameplate Data)</SectionTitle>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:8 }}>
-          {specRows.map(([label,value])=>(
-            <div key={label} style={{ display:"flex", justifyContent:"space-between", gap:12, border:`1px solid ${C.border}`, borderRadius:7, padding:"8px 10px", background:C.ivory }}>
-              <span style={{ fontSize:11, color:C.muted, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</span>
-              <span style={{ fontSize:12, color:C.ink, textAlign:"right" }}>{value}</span>
-            </div>
-          ))}
+        <SectionTitle>Carbon bed</SectionTitle>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:16, alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ fontSize:15, color:C.ink }}>Current bed fitted on <b>{fmtDateShort(lastChangeout)}</b> ({Math.max(0, daysBetween(lastChangeout, new Date()))} days ago).</div>
+          {canEdit && onRecordChangeout ? <Btn variant="primary" onClick={onRecordChangeout}>Record carbon change</Btn> : null}
         </div>
-        <div style={{ fontSize:11, color:C.muted, fontStyle:"italic", marginTop:10, lineHeight:1.6 }}>{FAN_SPECIFICATION.operatingNote}</div>
-      </Card>
-      <Card>
-        <SectionTitle>Fan Configuration History</SectionTitle>
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
-            <thead>
-              <tr style={{ borderBottom:`2px solid ${C.border}` }}>
-                {["From","To","Config","Motor (mm)","Fan (mm)","Fan RPM","Stack Discharge Flow (m3/hr)"].map(h=>(
-                  <th key={h} style={{ textAlign:"left", padding:"7px 8px", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {FAN_CONFIG_LOG.map((cfg,i)=>(
-                <tr key={cfg.from} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?C.ivory:C.surface }}>
-                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.from}</td>
-                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.to || "Present"}</td>
-                  <td style={{ padding:"7px 8px" }}>{cfg.label}</td>
-                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.motorPulley_mm}</td>
-                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.fanPulley_mm}</td>
-                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.fanRPM.toLocaleString()}</td>
-                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>
-                    {cfg.typicalStackDischargeFlow_m3hr.toLocaleString()}
-                    <button onClick={()=>setOpenFanNote(openFanNote===i?null:i)} style={{ marginLeft:6, border:`1px solid ${C.border}`, borderRadius:5, background:C.surface2, color:C.blue, cursor:"pointer", fontSize:10, fontWeight:700 }} title="Show flow note">*</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {openFanNote!=null && (
-          <div style={{ marginTop:8, padding:"9px 12px", background:alpha(C.blue,6), border:`1px solid ${alpha(C.blue,19)}`, borderRadius:7, fontSize:11, color:C.ink, lineHeight:1.5 }}>
-            {FAN_CONFIG_LOG[openFanNote].stackDischargeFlowNote}
-          </div>
-        )}
-        <Fold title="About the flow values">
-        <div style={{ fontSize:11, color:C.muted, marginTop:10, lineHeight:1.6 }}>
-          All flow values are Envirocare-measured stack discharge flows (post-demister, post-carbon bed) or fan-law estimates where no Envirocare measurement exists during that configuration window. True carbon bed inlet flow is marginally higher than stack discharge flow. Stack discharge flow is used as a conservative proxy in Wheeler-Jonas EBCT calculations.
-        </div>
+        <Fold title="Correct the current bed's fitted date">
+          <div style={{ fontSize:13, color:C.muted, marginBottom:10 }}>Only use this to fix a wrong date. To record new carbon, use Record carbon change so the bed history stays complete.</div>
+          <Input label="Fitted date" type="date" value={lastChangeout} onChange={onChangeoutDateChange} style={{ maxWidth:280 }} disabled={!canEdit} />
         </Fold>
       </Card>
       <Card>
-        <SectionTitle>Carbon Bed Configuration</SectionTitle>
-        <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
-          <Input label="Bed Mass (kg)" type="number" value={settings.bedMass} onChange={v=>onChange("bedMass",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
-          <Input label="Extraction Flow (m3/hr)" type="number" value={settings.flowM3hr} onChange={v=>onChange("flowM3hr",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
-          <Input label="Bed Cross-Section (m2)" type="number" step="0.1" min={0.2} value={settings.crossSectionM2} onChange={v=>onChange("crossSectionM2",Math.max(0.2,v||DEFAULT_CROSS_SECTION_M2))} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
-          <Input label="WJ Naph/TVOC Fraction (%)" type="number" step="0.5" value={(settings.naphthaleneFrac*100).toFixed(1)} onChange={v=>onChange("naphthaleneFrac",v/100)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
-          <Input label="Utilisation Rate (0-1)" type="number" step="0.01" min={0} max={1} value={settings.utilisationRate} onChange={v=>onChange("utilisationRate",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
-          <Input label="Stack Temp Correction Factor (C)" type="number" step="0.5" min={0} max={20} value={settings.stackTempCorrectionC} onChange={v=>onChange("stackTempCorrectionC",Math.max(0,Math.min(20,v||0)))} style={{ flex:"1 1 210px" }} disabled={!canEdit} />
-          <Input label="Pre-Test Buffer (days)" type="number" step="1" min={0} max={60} value={settings.preTestBufferDays} onChange={v=>onChange("preTestBufferDays",Math.max(0,Math.min(60,v||0)))} style={{ flex:"1 1 170px" }} disabled={!canEdit} />
-          <Input label="Pre-Test Buffer (active hrs)" type="number" step="10" min={50} max={400} value={settings.preTestBufferActiveHrs} onChange={v=>onChange("preTestBufferActiveHrs",Math.max(50,Math.min(400,v||150)))} style={{ flex:"1 1 190px" }} disabled={!canEdit} />
-        </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:8, lineHeight:1.55 }}>
-          Empirical uplift from ambient to carbon bed face temperature. Derived from P1-P8 MCERTS stack test data (avg delta +8 deg C). Update when continuous bed-face logging is available.
-        </div>
-        <div style={{ marginBottom:14 }}>
-          <label style={{ display:"block", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5 }}>
-            Current Carbon Charge Type
-          </label>
-          <label style={{ display:"flex", gap:8, alignItems:"center", fontSize:13, color:C.ink, fontWeight:700 }}>
-            <input type="checkbox" checked={!!settings.isSameCarbonCharge} onChange={e=>onChange("isSameCarbonCharge", e.target.checked)} disabled={!canEdit} />
-            Same carbon (not replaced since prior test) - enables 1,155-hr same-bed VOC limit
-          </label>
-          <div style={{ fontSize:11, color:C.muted, marginTop:4, lineHeight:1.5 }}>
-            Tick only if the carbon has NOT been replaced since the previous stack test period. The 1,155-hr same-bed limit applies to the P1-P3 same-carbon failure curve only. Fresh carbon (default) has higher capacity and a different failure trajectory. Incorrect setting will show a misleading reference line on the Forward Forecast chart.
-          </div>
-        </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
-          WJ fraction applied as hours scaling: higher fraction = faster capacity consumption = fewer charges to failure. 53% = plant baseline. Inlet VOC monitoring excluded (would trigger BAT 45 EA continuous stack monitoring obligation).
-        </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
-          Site-measured ambient-to-inlet offset: +10.3 deg C (Testo 925, 2026-06-18: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C). Updated from +8.0 deg C interim value. Applies to PAH scheduling and T_operative display only. VOC pathway uses raw ambient temperature consistent with calibration basis.
-        </div>
-      </Card>
-
-      <Card>
-        <SectionTitle>Risk Scoring</SectionTitle>
-        <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
-          <Input label="VOC Risk Weight (%)" type="number" min={10} max={90} step="1" value={Math.round((settings.vocRiskWeight??0.55)*100)} onChange={v=>onChange("vocRiskWeight",Math.max(10,Math.min(90,v||55))/100)} style={{ flex:"1 1 180px" }} disabled={!canEdit} />
-          <StatPill label="PAH Risk Weight" value={Math.round((1-(settings.vocRiskWeight??0.55))*100)} unit="%" sub="Auto-calculated" />
-        </div>
-      </Card>
-      <Card>
-        <SectionTitle>Last Carbon Changeout</SectionTitle>
-        <Input label="Changeout Date" type="date" value={lastChangeout} onChange={onChangeoutDateChange} style={{ maxWidth:280 }} disabled={!canEdit} />
-        <div style={{ fontSize:12, color:C.muted }}>Active hours from charge log (primary) or days x utilisation rate (fallback). Fan hours tracked separately - bed is exposed 24/7.</div>
-      </Card>
-      <Card>
-        <SectionTitle>Site Fallback Conditions</SectionTitle>
+        <SectionTitle>Site conditions (used when live data is missing)</SectionTitle>
         <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
           <Input label="Typical Ambient Temp (C)" type="number" step="0.5" value={settings.typicalTempC} onChange={v=>onChange("typicalTempC",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
           <Input label="Typical RH (%)" type="number" value={settings.typicalRH} onChange={v=>onChange("typicalRH",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
@@ -5226,28 +5156,11 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
           <input type="checkbox" checked={!!settings.useConservativeRH} onChange={e=>onChange("useConservativeRH",e.target.checked)} disabled={!canEdit} />
           Conservative Humidity Mode
         </label>
-        <div style={{ fontSize:11, color:C.muted, marginTop:4, lineHeight:1.5 }}>
+        <div style={{ fontSize:12, color:C.muted, marginTop:4, lineHeight:1.5 }}>
           When enabled, humidity is fixed at 90% RH for all VOC predictions and forward forecasts. This is the conservative BAT-aligned posture for Boston, Lincolnshire where night-time RH routinely exceeds 90% in autumn and winter. Recommended for compliance scheduling decisions.
         </div>
-        <div style={{ fontSize:11, color:C.muted }}>Boston, Lincolnshire PE21 7HJ | {LAT}N {LON}E | Live weather from Open-Meteo on load.</div>
+        <div style={{ fontSize:12, color:C.muted }}>Boston, Lincolnshire PE21 7HJ | {LAT}N {LON}E | Live weather from Open-Meteo on load.</div>
       </Card>
-      <Card>
-        <SectionTitle>Plant Averages</SectionTitle>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-          <StatPill label="Plant 1" value={P1_AVG_HRS} unit="hrs/charge" sub="All product types, P1-P8 analysis" />
-          <StatPill label="Plant 2" value={P2_AVG_HRS} unit="hrs/charge" sub="All product types, P1-P8 analysis" />
-        </div>
-        <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
-          Plant 1 avg {P1_AVG_HRS} hrs/charge (all product types) | Plant 2 avg {P2_AVG_HRS} hrs/charge (all product types). Derived from full 1,519-charge timestamp analysis.
-        </div>
-      </Card>
-      <Card>
-        <SectionTitle>Model Architecture</SectionTitle>
-        <div style={{ fontSize:12, color:C.ink, lineHeight:1.8 }}>
-          Full model architecture, calibration equations, Bayesian update detail, and the v1.7.0 audit changelog are documented in the Model Details tab.
-        </div>
-      </Card>
-
       <Card>
         <SectionTitle>Data Management</SectionTitle>
         <div style={{ marginBottom:12, padding:"10px 14px", borderRadius:7, background:platformMeta && platformMeta.error ? TINT.redBg : TINT.blueBg, border:`1px solid ${platformMeta && platformMeta.error ? C.red : C.blue}`, color:platformMeta && platformMeta.error ? TINT.redText : TINT.blueText, fontSize:12, lineHeight:1.6 }}>
@@ -5270,15 +5183,134 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
             }} />
           </label>
           <Btn onClick={()=>{ void onRunChargeImportScan(); }} variant="gold" disabled={!canEdit}>Run charge import scan</Btn>
-          <Btn onClick={()=>{ if(window.confirm("This will delete all shared charge log entries, CoA records, thermal log entries, and settings overrides for every user. The P1-P14 seed data will be restored. Confirm?")){ void onResetPlatform(); } }} variant="danger" disabled={!isAdmin}>Clear all data</Btn>
+          <Btn onClick={()=>{ const typed = window.prompt("This deletes all shared charge logs, CoA and creosote records, thermal readings, carbon change history and settings for every user, and cannot be undone. Export a backup first. Type DELETE to confirm."); if (typed === "DELETE") { void onResetPlatform(); } }} variant="danger" disabled={!isAdmin}>Clear all data</Btn>
         </div>
-        {authState && authState.user && authState.user.role === "viewer" ? <div style={{ marginTop:8, fontSize:11, color:C.muted }}>Viewer accounts can inspect shared state and retained documents, but they cannot change platform data.</div> : null}
-        {!isAdmin ? <div style={{ marginTop:8, fontSize:11, color:C.muted }}>Only platform admins can clear all shared data.</div> : null}
-        <div style={{ fontSize:11, color:C.muted, marginTop:10, lineHeight:1.6 }}>
+        {authState && authState.user && authState.user.role === "viewer" ? <div style={{ marginTop:8, fontSize:12, color:C.muted }}>Viewer accounts can inspect shared state and retained documents, but they cannot change platform data.</div> : null}
+        {!isAdmin ? <div style={{ marginTop:8, fontSize:12, color:C.muted }}>Only platform admins can clear all shared data.</div> : null}
+        <div style={{ fontSize:12, color:C.muted, marginTop:10, lineHeight:1.6 }}>
           Shared-platform backup note: this export contains the live server state for all users, plus model version metadata. Uploaded MCERTS stack test PDFs and Koppers CoA PDFs are retained server-side in the shared document library. Automated charge CSV exports should be dropped into the server charge inbox for ingestion and archival.
         </div>
       </Card>
       <SecurityCard authState={authState} onLogout={onLogout} onChangePassword={onChangePassword} onCreateUser={onCreateUser} adminData={adminData} />
+      <Card>
+        <SectionTitle>Engineering settings and reference</SectionTitle>
+        <div style={{ fontSize:14, color:C.muted }}>Model inputs, risk weighting, plant averages and fan data. Change these only with engineering sign-off.</div>
+        <Fold title="Show engineering settings">
+          <div style={{ marginTop:8 }}>
+      <Card>
+        <SectionTitle>Carbon Bed Configuration</SectionTitle>
+        <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+          <Input label="Bed Mass (kg)" type="number" value={settings.bedMass} onChange={v=>onChange("bedMass",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
+          <Input label="Extraction Flow (m3/hr)" type="number" value={settings.flowM3hr} onChange={v=>onChange("flowM3hr",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
+          <Input label="Bed Cross-Section (m2)" type="number" step="0.1" min={0.2} value={settings.crossSectionM2} onChange={v=>onChange("crossSectionM2",Math.max(0.2,v||DEFAULT_CROSS_SECTION_M2))} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
+          <Input label="WJ Naph/TVOC Fraction (%)" type="number" step="0.5" value={(settings.naphthaleneFrac*100).toFixed(1)} onChange={v=>onChange("naphthaleneFrac",v/100)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
+          <Input label="Utilisation Rate (0-1)" type="number" step="0.01" min={0} max={1} value={settings.utilisationRate} onChange={v=>onChange("utilisationRate",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
+          <Input label="Stack Temp Correction Factor (C)" type="number" step="0.5" min={0} max={20} value={settings.stackTempCorrectionC} onChange={v=>onChange("stackTempCorrectionC",Math.max(0,Math.min(20,v||0)))} style={{ flex:"1 1 210px" }} disabled={!canEdit} />
+          <Input label="Pre-Test Buffer (days)" type="number" step="1" min={0} max={60} value={settings.preTestBufferDays} onChange={v=>onChange("preTestBufferDays",Math.max(0,Math.min(60,v||0)))} style={{ flex:"1 1 170px" }} disabled={!canEdit} />
+          <Input label="Pre-Test Buffer (active hrs)" type="number" step="10" min={50} max={400} value={settings.preTestBufferActiveHrs} onChange={v=>onChange("preTestBufferActiveHrs",Math.max(50,Math.min(400,v||150)))} style={{ flex:"1 1 190px" }} disabled={!canEdit} />
+        </div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8, lineHeight:1.55 }}>
+          Empirical uplift from ambient to carbon bed face temperature. Derived from P1-P8 MCERTS stack test data (avg delta +8 deg C). Update when continuous bed-face logging is available.
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <label style={{ display:"block", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5 }}>
+            Current Carbon Charge Type
+          </label>
+          <label style={{ display:"flex", gap:8, alignItems:"center", fontSize:13, color:C.ink, fontWeight:700 }}>
+            <input type="checkbox" checked={!!settings.isSameCarbonCharge} onChange={e=>onChange("isSameCarbonCharge", e.target.checked)} disabled={!canEdit} />
+            Same carbon (not replaced since prior test) - enables 1,155-hr same-bed VOC limit
+          </label>
+          <div style={{ fontSize:12, color:C.muted, marginTop:4, lineHeight:1.5 }}>
+            Tick only if the carbon has NOT been replaced since the previous stack test period. The 1,155-hr same-bed limit applies to the P1-P3 same-carbon failure curve only. Fresh carbon (default) has higher capacity and a different failure trajectory. Incorrect setting will show a misleading reference line on the Forward Forecast chart.
+          </div>
+        </div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
+          WJ fraction applied as hours scaling: higher fraction = faster capacity consumption = fewer charges to failure. 53% = plant baseline. Inlet VOC monitoring excluded (would trigger BAT 45 EA continuous stack monitoring obligation).
+        </div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
+          Site-measured ambient-to-inlet offset: +10.3 deg C (Testo 925, 2026-06-18: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C). Updated from +8.0 deg C interim value. Applies to PAH scheduling and T_operative display only. VOC pathway uses raw ambient temperature consistent with calibration basis.
+        </div>
+      </Card>
+
+      <Card>
+        <SectionTitle>Risk Scoring</SectionTitle>
+        <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+          <Input label="VOC Risk Weight (%)" type="number" min={10} max={90} step="1" value={Math.round((settings.vocRiskWeight??0.55)*100)} onChange={v=>onChange("vocRiskWeight",Math.max(10,Math.min(90,v||55))/100)} style={{ flex:"1 1 180px" }} disabled={!canEdit} />
+          <StatPill label="PAH Risk Weight" value={Math.round((1-(settings.vocRiskWeight??0.55))*100)} unit="%" sub="Auto-calculated" />
+        </div>
+      </Card>
+      <Card>
+        <SectionTitle>Plant Averages</SectionTitle>
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+          <StatPill label="Plant 1" value={P1_AVG_HRS} unit="hrs/charge" sub="All product types, P1-P8 analysis" />
+          <StatPill label="Plant 2" value={P2_AVG_HRS} unit="hrs/charge" sub="All product types, P1-P8 analysis" />
+        </div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>
+          Plant 1 avg {P1_AVG_HRS} hrs/charge (all product types) | Plant 2 avg {P2_AVG_HRS} hrs/charge (all product types). Derived from full 1,519-charge timestamp analysis.
+        </div>
+      </Card>
+      <Card>
+        <SectionTitle>Model Architecture</SectionTitle>
+        <div style={{ fontSize:12, color:C.ink, lineHeight:1.8 }}>
+          Full model architecture, calibration equations, Bayesian update detail, and the v1.7.0 audit changelog are documented in the Model Details tab.
+        </div>
+      </Card>
+
+      <Card>
+        <SectionTitle>Fan Specification (Confirmed Nameplate Data)</SectionTitle>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(230px, 100%), 1fr))", gap:8 }}>
+          {specRows.map(([label,value])=>(
+            <div key={label} style={{ display:"flex", justifyContent:"space-between", gap:12, border:`1px solid ${C.border}`, borderRadius:7, padding:"8px 10px", background:C.ivory }}>
+              <span style={{ fontSize:12, color:C.muted, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</span>
+              <span style={{ fontSize:12, color:C.ink, textAlign:"right" }}>{value}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize:12, color:C.muted, fontStyle:"italic", marginTop:10, lineHeight:1.6 }}>{FAN_SPECIFICATION.operatingNote}</div>
+      </Card>
+      <Card>
+        <SectionTitle>Fan Configuration History</SectionTitle>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <thead>
+              <tr style={{ borderBottom:`2px solid ${C.border}` }}>
+                {["From","To","Config","Motor (mm)","Fan (mm)","Fan RPM","Stack Discharge Flow (m3/hr)"].map(h=>(
+                  <th key={h} style={{ textAlign:"left", padding:"7px 8px", fontSize:12, fontWeight:700, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {FAN_CONFIG_LOG.map((cfg,i)=>(
+                <tr key={cfg.from} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?C.ivory:C.surface }}>
+                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.from}</td>
+                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.to || "Present"}</td>
+                  <td style={{ padding:"7px 8px" }}>{cfg.label}</td>
+                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.motorPulley_mm}</td>
+                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.fanPulley_mm}</td>
+                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>{cfg.fanRPM.toLocaleString()}</td>
+                  <td style={{ padding:"7px 8px", fontFamily:MONO }}>
+                    {cfg.typicalStackDischargeFlow_m3hr.toLocaleString()}
+                    <button onClick={()=>setOpenFanNote(openFanNote===i?null:i)} style={{ marginLeft:6, border:`1px solid ${C.border}`, borderRadius:5, background:C.surface2, color:C.blue, cursor:"pointer", fontSize:12, fontWeight:700 }} title="Show flow note">*</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {openFanNote!=null && (
+          <div style={{ marginTop:8, padding:"9px 12px", background:alpha(C.blue,6), border:`1px solid ${alpha(C.blue,19)}`, borderRadius:7, fontSize:12, color:C.ink, lineHeight:1.5 }}>
+            {FAN_CONFIG_LOG[openFanNote].stackDischargeFlowNote}
+          </div>
+        )}
+        <Fold title="About the flow values">
+        <div style={{ fontSize:12, color:C.muted, marginTop:10, lineHeight:1.6 }}>
+          All flow values are Envirocare-measured stack discharge flows (post-demister, post-carbon bed) or fan-law estimates where no Envirocare measurement exists during that configuration window. True carbon bed inlet flow is marginally higher than stack discharge flow. Stack discharge flow is used as a conservative proxy in Wheeler-Jonas EBCT calculations.
+        </div>
+        </Fold>
+      </Card>
+          </div>
+        </Fold>
+      </Card>
     </div>
   );
 }
@@ -5314,7 +5346,7 @@ function Chip({ tone, children }) {
   return <span style={{ display:"inline-flex", alignItems:"center", padding:"5px 12px", borderRadius:999, background:toneSoft(tone), color:toneColor(tone), fontSize:12, fontWeight:600, whiteSpace:"nowrap" }}>{children}</span>;
 }
 function Label({ children, color }) {
-  return <div style={{ fontSize:11, letterSpacing:"0.08em", textTransform:"uppercase", color:color || C.muted, fontWeight:600 }}>{children}</div>;
+  return <div style={{ fontSize:12, letterSpacing:"0.08em", textTransform:"uppercase", color:color || C.muted, fontWeight:600 }}>{children}</div>;
 }
 function Panel({ children, style }) {
   return <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:"20px 22px", minWidth:0, ...(style || {}) }}>{children}</div>;
@@ -5416,7 +5448,7 @@ function LogBars({ tests, field, limit, lo, hi, unit }) {
     <div>
       <div style={{ position:"relative", height:200, borderBottom:`1px solid ${C.border}` }}>
         <div style={{ position:"absolute", left:0, right:0, bottom:limitPos + "%", borderTop:`2px dashed ${C.red}` }} />
-        <div style={{ position:"absolute", right:0, bottom:"calc(" + limitPos + "% + 4px)", fontSize:11, color:C.red, fontWeight:600 }}>Limit {limit.toLocaleString("en-GB")}</div>
+        <div style={{ position:"absolute", right:0, bottom:"calc(" + limitPos + "% + 4px)", fontSize:12, color:C.red, fontWeight:600 }}>Limit {limit.toLocaleString("en-GB")}</div>
         <div style={{ position:"absolute", inset:0, display:"grid", gridTemplateColumns:"repeat(" + Math.max(shown.length, 1) + ", minmax(0, 1fr))", gap:6, alignItems:"end" }}>
           {shown.map(t => (
             <div key={t.period} style={{ height:"100%", display:"flex", alignItems:"flex-end" }}>
@@ -5426,13 +5458,31 @@ function LogBars({ tests, field, limit, lo, hi, unit }) {
         </div>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(" + Math.max(shown.length, 1) + ", minmax(0, 1fr))", gap:6, marginTop:6 }}>
-        {shown.map(t => <div key={t.period} style={{ fontFamily:MONO, fontSize:10, color:C.muted, textAlign:"center" }}>{t.period}</div>)}
+        {shown.map(t => <div key={t.period} style={{ fontFamily:MONO, fontSize:12, color:C.muted, textAlign:"center" }}>{t.period}</div>)}
       </div>
     </div>
   );
 }
 
-function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, ambient, ambientSource, rh, creoDailyLog, creoDeliveries, platformMeta, onNavigate, creoModel, creoBed, opLoo }) {
+function MeterBar({ label, value, limit, unit, note }) {
+  const pct = limit > 0 ? value / limit * 100 : 0;
+  const tone = pct >= 100 ? "bad" : pct >= 75 ? "warn" : "ok";
+  const shown = Math.max(2, Math.min(100, pct));
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:10, flexWrap:"wrap" }}>
+        <span style={{ fontSize:14, fontWeight:600, color:C.ink }}>{label}</span>
+        <span style={{ fontSize:14, color:toneColor(tone), fontWeight:600 }}>{Math.round(pct)}% of permit limit</span>
+      </div>
+      <div style={{ position:"relative", height:12, borderRadius:999, background:C.surface2, marginTop:8, overflow:"hidden" }}>
+        <div style={{ position:"absolute", left:0, top:0, bottom:0, width:shown + "%", borderRadius:999, background:toneColor(tone) }} />
+      </div>
+      <div style={{ fontSize:13, color:C.muted, marginTop:6 }}>{note || (value.toLocaleString("en-GB", { maximumFractionDigits:1 }) + " " + unit + " against a limit of " + limit.toLocaleString("en-GB") + " " + unit)}</div>
+    </div>
+  );
+}
+
+function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, ambient, ambientSource, rh, creoDailyLog, creoDeliveries, platformMeta, onNavigate, creoModel, creoBed, opLoo, canEdit, onRecordChangeout, changeoutList }) {
   const today = useMemo(()=>new Date(), []);
   const { fc, binding, bufferDays } = useMemo(()=>forecastFrom(today, activeHrs, settings, vocC, pahC), [today, activeHrs, settings, vocC, pahC]);
   const outlook = useMemo(()=>seasonOutlook(settings, vocC), [settings, vocC]);
@@ -5446,29 +5496,35 @@ function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, am
   const breachDate = binding.row ? binding.row.date : null;
   const testDay = binding.row ? Math.max(0, binding.row.day - bufferDays) : null;
   const testDate = testDay != null ? isoDateFromDate(addDays(today, testDay)) : null;
-  const testPos = totalLife ? Math.min(100, (daysSince + testDay) / totalLife * 100) : null;
   const band = Math.exp(vocUncertaintyMultiplier(vocC));
 
   const vocNow = predictVOC(activeHrs, ambient, rh, vocC);
   const stackNow = estimateStackTemp(ambient);
   const pahNow = predictPAH(stackNow, activeHrs, pahC);
   const pahLimitTemp = pahFailTemp(activeHrs, pahC);
-  const vocTone = vocNow >= VOC_ELV ? "bad" : vocNow >= VOC_ELV * 0.75 ? "warn" : "ok";
-  const pahTone = pahNow >= PAH_ELV ? "bad" : pahNow >= PAH_ELV * 0.75 ? "warn" : "ok";
-  const tempTone = stackNow >= pahLimitTemp ? "bad" : stackNow >= pahLimitTemp - 4 ? "warn" : "ok";
+  const latestOver = latest && ((latest.voc != null && latest.voc > VOC_ELV) || (latest.pah != null && latest.pah > PAH_ELV));
+  const modelOver = vocNow >= VOC_ELV || pahNow >= PAH_ELV;
+  const modelNear = vocNow >= VOC_ELV * 0.75 || pahNow >= PAH_ELV * 0.75;
 
-  let headline = "No limit is forecast within the next 12 months.";
-  if (binding.row) {
-    if (testDay <= 0) headline = "Confirmatory stack test is due now.";
-    else if (testDay <= 14) headline = "Stack test due within " + testDay + " days, by " + fmtDayMonth(testDate) + ".";
-    else headline = "Current bed is on track. Next action: stack test by " + fmtDayMonth(testDate) + ".";
-  }
+  let status = "ok";
+  if (modelOver || latestOver || (testDay != null && testDay <= 0)) status = "bad";
+  else if (modelNear || (testDay != null && testDay <= 14)) status = "warn";
+  const statusTitle = status === "ok" ? "All good" : status === "warn" ? "Action needed soon" : "Action needed now";
+  const lifeText = daysLeft != null ? "The carbon bed has about " + daysLeft + " days of life left." : "The carbon bed is not forecast to reach its limit in the next 12 months.";
+  const emissionsText = modelOver ? "The model estimates emissions are over the permit limit." : latestOver ? "The last stack test was over the permit limit." : "Emissions are estimated to be within permit limits.";
+  const nextJob = testDate == null ? "No stack test needed in the next 12 months." : testDay <= 0 ? "Book the confirmatory stack test now." : "Next job: book a stack test for before " + fmtDateShort(testDate) + ".";
+
+  const tempTone = stackNow >= pahLimitTemp ? "bad" : stackNow >= pahLimitTemp - 4 ? "warn" : "ok";
+  const tempText = tempTone === "ok" ? "Low. The gas reaching the carbon is cool enough that PAH is unlikely to break through."
+    : tempTone === "warn" ? "Rising. Warm gas makes PAH break through more easily: watch the forecast."
+    : "High. Gas this warm can push PAH over the limit even on newer carbon.";
 
   const circ = 2 * Math.PI * 92;
   const vocOver = tests.filter(t=>t.voc != null && t.voc > VOC_ELV).length;
   const pahOver = tests.filter(t=>t.pah != null && t.pah > PAH_ELV).length;
   const maxDays = Math.max(1, ...outlook.map(o=>o.days));
   const nowMonth = today.getMonth();
+  const curBed = changeoutList && changeoutList.length ? changeoutList[changeoutList.length - 1] : null;
 
   const readings = (creoDailyLog || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   const lastReading = readings.length ? readings[readings.length - 1] : null;
@@ -5476,141 +5532,161 @@ function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, am
   const lastDel = dels.length ? dels[dels.length - 1] : null;
   const chargeImport = platformMeta && platformMeta.imports ? platformMeta.imports.charges : null;
   const creoImport = platformMeta && platformMeta.imports ? platformMeta.imports.creosote : null;
+  const linkBtn = { minHeight:40, padding:"0 14px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.rund, fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:"inherit" };
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-      <div style={{ display:"flex", flexWrap:"wrap", alignItems:"flex-end", justifyContent:"space-between", gap:12 }}>
-        <div>
-          <Label>{today.toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"long", year:"numeric" })}</Label>
-          <h1 style={{ margin:"6px 0 0", fontFamily:HEAD_FONT, fontWeight:600, fontSize:"clamp(22px, 3vw, 30px)", letterSpacing:"-0.01em", color:C.ink }}>{headline}</h1>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:16, alignItems:"center", justifyContent:"space-between", padding:"18px 20px", borderRadius:14, background:toneSoft(status), border:"1px solid " + alpha(toneColor(status), 35) }}>
+        <div style={{ display:"flex", gap:14, alignItems:"flex-start", minWidth:0, flex:"1 1 420px" }}>
+          <span aria-hidden="true" style={{ flex:"0 0 auto", width:14, height:14, marginTop:8, borderRadius:"50%", background:toneColor(status), boxShadow:"0 0 0 5px " + alpha(toneColor(status), 25) }} />
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:13, color:C.muted }}>{today.toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"long", year:"numeric" })}</div>
+            <h1 style={{ margin:"4px 0 6px", fontFamily:HEAD_FONT, fontWeight:600, fontSize:"clamp(22px, 3vw, 30px)", color:C.ink, lineHeight:1.2 }}>{statusTitle}</h1>
+            <div style={{ fontSize:16, color:C.ink, lineHeight:1.5 }}>{emissionsText} {lifeText} <b>{nextJob}</b></div>
+          </div>
         </div>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          <Chip tone={vocTone}>{vocTone === "ok" ? "VOC within limit" : vocTone === "warn" ? "VOC approaching limit" : "VOC over limit (model)"}</Chip>
-          <Chip tone={pahTone}>{pahTone === "ok" ? "PAH low risk" : pahTone === "warn" ? "PAH approaching limit" : "PAH over limit (model)"}</Chip>
-        </div>
+        {canEdit ? <Btn variant="primary" onClick={onRecordChangeout}>Record carbon change</Btn> : null}
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(340px, 1fr))", gap:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap:20 }}>
         <Panel style={{ gridColumn:"1 / -1", display:"flex", flexWrap:"wrap", gap:28, alignItems:"center" }}>
-          <div style={{ position:"relative", width:220, height:220, flex:"0 0 auto", margin:"0 auto" }}>
-            <svg width="220" height="220" viewBox="0 0 220 220" role="img" aria-label={"Bed life used: day " + daysSince + (totalLife ? " of a forecast " + totalLife + " days" : "")}>
-              <circle cx="110" cy="110" r="92" fill="none" stroke={C.border} strokeWidth="14" />
-              <circle cx="110" cy="110" r="92" fill="none" stroke={C.rund} strokeWidth="14" strokeLinecap="round" strokeDasharray={(circ * used).toFixed(1) + " " + circ.toFixed(1)} transform="rotate(-90 110 110)" style={{ transition:"stroke-dasharray 0.8s ease" }} />
+          <div style={{ position:"relative", width:200, height:200, flex:"0 0 auto", margin:"0 auto" }}>
+            <svg width="200" height="200" viewBox="0 0 220 220" role="img" aria-label={"Carbon life used: day " + daysSince + (totalLife ? " of about " + totalLife + " days" : "")}>
+              <circle cx="110" cy="110" r="92" fill="none" stroke={C.border} strokeWidth="16" />
+              <circle cx="110" cy="110" r="92" fill="none" stroke={C.rund} strokeWidth="16" strokeLinecap="round" strokeDasharray={(circ * used).toFixed(1) + " " + circ.toFixed(1)} transform="rotate(-90 110 110)" style={{ transition:"stroke-dasharray 0.8s ease" }} />
             </svg>
             <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center" }}>
-              <div style={{ fontFamily:MONO, fontSize:52, fontWeight:600, lineHeight:1, color:C.ink }}>{daysLeft != null ? daysLeft : "--"}</div>
-              <div style={{ fontSize:13, color:C.muted, marginTop:6 }}>days to forecast<br />{binding.type === "None" ? "limit" : binding.type + " limit"}</div>
+              <div style={{ fontFamily:MONO, fontSize:50, fontWeight:600, lineHeight:1, color:C.ink }}>{daysLeft != null ? daysLeft : "--"}</div>
+              <div style={{ fontSize:14, color:C.muted, marginTop:6 }}>days of carbon<br />life left</div>
             </div>
           </div>
-          <div style={{ flex:"1 1 340px", minWidth:0, display:"flex", flexDirection:"column", gap:18 }}>
+          <div style={{ flex:"1 1 340px", minWidth:0, display:"flex", flexDirection:"column", gap:16 }}>
             <div>
-              <Label>Current carbon bed</Label>
-              <div style={{ fontFamily:HEAD_FONT, fontSize:24, fontWeight:600, marginTop:4, color:C.ink }}>Day {daysSince}{totalLife ? " of ~" + totalLife : ""}</div>
-              <div style={{ fontSize:13, color:C.muted, marginTop:2 }}>In service since {fmtDateShort(lastChangeout)} - {Math.round(activeHrs).toLocaleString("en-GB")} effective active hours</div>
+              <h2 style={{ margin:0, fontFamily:HEAD_FONT, fontSize:20, fontWeight:600, color:C.ink }}>Carbon bed{curBed ? " - " + curBed.bed : ""}</h2>
+              <div style={{ fontSize:14, color:C.muted, marginTop:4 }}>Day {daysSince}{totalLife ? " of about " + totalLife : ""}. Forecast from plant running hours and Boston weather.</div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:12 }}>
-              <div style={{ background:C.surface2, borderRadius:10, padding:"12px 14px" }}><Label>Forecast limit</Label><div style={{ fontFamily:MONO, fontSize:20, fontWeight:600, marginTop:4 }}>{breachDate ? fmtDateShort(breachDate) : "None in 12 months"}</div></div>
-              <div style={{ background:"var(--accent-soft)", borderRadius:10, padding:"12px 14px" }}><Label color={C.rund}>Stack test by</Label><div style={{ fontFamily:MONO, fontSize:20, fontWeight:600, marginTop:4, color:C.rund }}>{testDate ? fmtDateShort(testDate) : "--"}</div></div>
-              <div style={{ background:C.surface2, borderRadius:10, padding:"12px 14px" }}><Label>Running rate</Label><div style={{ fontFamily:MONO, fontSize:20, fontWeight:600, marginTop:4 }}>{(fc.dailyActiveHrs).toFixed(1)} h/day</div></div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(170px, 100%), 1fr))", gap:12 }}>
+              {[
+                ["Carbon fitted", fmtDateShort(lastChangeout), null],
+                ["Book stack test by", testDate ? fmtDateShort(testDate) : "Not needed yet", "accent"],
+                ["Expected to need changing", breachDate ? fmtDateShort(breachDate) : "After 12 months", null],
+              ].map(r => (
+                <div key={r[0]} style={{ background:r[2] ? "var(--accent-soft)" : C.surface2, borderRadius:12, padding:"12px 14px" }}>
+                  <div style={{ fontSize:13, color:r[2] ? C.rund : C.muted, fontWeight:600 }}>{r[0]}</div>
+                  <div style={{ fontSize:18, fontWeight:600, marginTop:4, color:r[2] ? C.rund : C.ink }}>{r[1]}</div>
+                </div>
+              ))}
             </div>
             {totalLife ? (
-              <div>
+              <div aria-hidden="true">
                 <div style={{ position:"relative", height:10, borderRadius:999, background:C.surface2, overflow:"hidden" }}>
                   <div style={{ position:"absolute", left:0, top:0, bottom:0, width:(used * 100).toFixed(1) + "%", background:C.rund, borderRadius:999 }} />
                 </div>
-                <div style={{ position:"relative", height:34, fontSize:11, color:C.muted }}>
-                  <span style={{ position:"absolute", left:0, top:6 }}>{fmtDayMonth(lastChangeout)}<br />changeout</span>
-                  <span style={{ position:"absolute", left:"calc(" + (used * 100).toFixed(1) + "% - 14px)", top:6, color:C.rund, fontWeight:600 }}>Today</span>
-                  {testPos != null && testPos < 92 ? <span style={{ position:"absolute", left:testPos.toFixed(1) + "%", top:6, transform:"translateX(-50%)", textAlign:"center" }}>{fmtDayMonth(testDate)}<br />test</span> : null}
-                  <span style={{ position:"absolute", right:0, top:6, textAlign:"right" }}>{fmtDayMonth(breachDate)}<br />forecast</span>
+                <div style={{ position:"relative", height:18, fontSize:12, color:C.muted, marginTop:6 }}>
+                  <span style={{ position:"absolute", left:0 }}>{fmtDayMonth(lastChangeout)}</span>
+                  {used > 0.12 && used < 0.82 ? <span style={{ position:"absolute", left:(used * 100).toFixed(1) + "%", transform:"translateX(-50%)", color:C.rund, fontWeight:600 }}>Today</span> : null}
+                  <span style={{ position:"absolute", right:0 }}>{fmtDayMonth(breachDate)}</span>
                 </div>
               </div>
             ) : null}
-            <div style={{ fontSize:12, color:C.muted, display:"flex", gap:8, alignItems:"flex-start" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2" aria-hidden="true" style={{ flex:"0 0 auto", marginTop:1 }}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
-              <span>VOC uncertainty band x{band.toFixed(2)} ({vocC && vocC.n ? vocC.n : "--"} calibration periods). The confirmatory test checks the date before carbon is ordered. Forecast uses seasonal climatology and {settings.stackTempCorrectionC ?? FALLBACK_AMBIENT_TO_INLET_OFFSET_C} C site offset.</span>
-            </div>
+            <Fold title="How sure is this forecast?">
+              <div style={{ fontSize:14, color:C.muted, lineHeight:1.6 }}>
+                The forecast comes from {vocC && vocC.n ? vocC.n : "--"} past stack tests. Results vary a lot from bed to bed, so the real date could be several weeks either side (uncertainty x{band.toFixed(1)} on the VOC estimate). That is why the plan is to book a stack test {bufferDays} days before the forecast date: the test confirms when the carbon actually needs changing.
+              </div>
+            </Fold>
           </div>
         </Panel>
 
         <Panel>
-          <Label>PAH temperature risk</Label>
-          <div style={{ display:"flex", alignItems:"baseline", gap:8, marginTop:10 }}><span style={{ fontFamily:MONO, fontSize:34, fontWeight:600, color:toneColor(tempTone) }}>{stackNow.toFixed(1)}</span><span style={{ color:C.muted }}>C est. stack</span></div>
-          <div style={{ position:"relative", marginTop:14 }}>
-            <div style={{ height:10, borderRadius:999, background:"linear-gradient(90deg, " + C.teal + " 0%, " + C.teal + " " + Math.max(0, (pahLimitTemp - 4) / 40 * 100).toFixed(0) + "%, " + C.amber + " " + Math.max(0, (pahLimitTemp - 4) / 40 * 100).toFixed(0) + "%, " + C.amber + " " + Math.min(100, pahLimitTemp / 40 * 100).toFixed(0) + "%, " + C.red + " " + Math.min(100, pahLimitTemp / 40 * 100).toFixed(0) + "%)" }} />
-            <span style={{ position:"absolute", left:Math.max(0, Math.min(100, stackNow / 40 * 100)).toFixed(1) + "%", top:-6, width:3, height:22, marginLeft:-1, borderRadius:2, background:C.ink }} />
+          <h2 style={{ margin:"0 0 14px", fontFamily:HEAD_FONT, fontSize:18, fontWeight:600, color:C.ink }}>Emissions now (estimate)</h2>
+          <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
+            <MeterBar label="VOC (solvent vapour)" value={vocNow} limit={VOC_ELV} unit="mg/m3" />
+            <MeterBar label="PAH (tar compounds)" value={pahNow} limit={PAH_ELV} unit="ug/m3" />
           </div>
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.muted, marginTop:6, fontFamily:MONO }}><span>0 C</span><span>40 C</span></div>
-          <div style={{ fontSize:12, color:C.muted, marginTop:10 }}>Ambient {ambient.toFixed(1)} C ({ambientSource}). Model PAH limit reached at {pahLimitTemp.toFixed(1)} C stack at current bed age. Predicted PAH now {pahNow.toLocaleString("en-GB")} ug/m3.</div>
+          <div style={{ fontSize:13, color:C.muted, marginTop:14 }}>Model estimate for today. Only a stack test measures emissions directly.</div>
         </Panel>
 
         <Panel>
-          <Label>Latest stack test{latest ? " - " + latest.period : ""}</Label>
+          <h2 style={{ margin:"0 0 6px", fontFamily:HEAD_FONT, fontSize:18, fontWeight:600, color:C.ink }}>Last stack test</h2>
           {latest ? (
             <>
-              <div style={{ fontSize:12, color:C.muted, marginTop:3 }}>{fmtDateShort(latest.date)}{latest.report ? " - " + latest.report : ""}{latest.bedId ? " - " + latest.bedId + (latest.bedDay ? " day " + latest.bedDay : "") : ""}</div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:12, marginTop:14 }}>
-                <div><div style={{ fontFamily:MONO, fontSize:26, fontWeight:600, color:latest.voc != null && latest.voc > VOC_ELV ? C.red : C.teal }}>{latest.voc != null ? latest.voc : "--"}</div><div style={{ fontSize:12, color:C.muted }}>VOC mg/m3 - limit {VOC_ELV}</div></div>
-                <div><div style={{ fontFamily:MONO, fontSize:26, fontWeight:600, color:latest.pah != null && latest.pah > PAH_ELV ? C.red : C.teal }}>{latest.pah != null ? latest.pah.toLocaleString("en-GB") : "--"}</div><div style={{ fontSize:12, color:C.muted }}>PAH ug/m3 - limit {PAH_ELV.toLocaleString("en-GB")}</div></div>
+              <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:14 }}>
+                <Chip tone={latestOver ? "bad" : "ok"}>{latestOver ? "Over limit" : "Passed"}</Chip>
+                <span style={{ fontSize:14, color:C.muted }}>{fmtDateShort(latest.date)} ({latest.period}{latest.report ? ", " + latest.report : ""})</span>
               </div>
-              <button type="button" onClick={()=>onNavigate("stack", "compliance")} style={{ marginTop:16, minHeight:38, padding:"0 14px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.rund, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>All stack tests</button>
+              <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
+                {latest.voc != null ? <MeterBar label="VOC" value={latest.voc} limit={VOC_ELV} unit="mg/m3" /> : null}
+                {latest.pah != null ? <MeterBar label="PAH" value={latest.pah} limit={PAH_ELV} unit="ug/m3" /> : null}
+              </div>
+              <div style={{ marginTop:14 }}><button type="button" onClick={()=>onNavigate("stack", "compliance")} style={linkBtn}>All stack test results</button></div>
             </>
-          ) : <div style={{ fontSize:13, color:C.muted, marginTop:8 }}>No stack tests recorded.</div>}
+          ) : <div style={{ fontSize:14, color:C.muted }}>No stack tests recorded yet.</div>}
         </Panel>
 
         <Panel>
-          <Label>Model now</Label>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:12, marginTop:12 }}>
-            <div><div style={{ fontFamily:MONO, fontSize:26, fontWeight:600, color:toneColor(vocTone) }}>{vocNow.toFixed(1)}</div><div style={{ fontSize:12, color:C.muted }}>Predicted VOC mg/m3</div></div>
-            <div><div style={{ fontFamily:MONO, fontSize:26, fontWeight:600, color:toneColor(pahTone) }}>{pahNow.toLocaleString("en-GB")}</div><div style={{ fontSize:12, color:C.muted }}>Predicted PAH ug/m3</div></div>
+          <h2 style={{ margin:"0 0 6px", fontFamily:HEAD_FONT, fontSize:18, fontWeight:600, color:C.ink }}>Temperature risk</h2>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}><Chip tone={tempTone}>{tempTone === "ok" ? "Low" : tempTone === "warn" ? "Rising" : "High"}</Chip><span style={{ fontSize:14, color:C.muted }}>Gas at the stack about {stackNow.toFixed(0)} C</span></div>
+          <div style={{ position:"relative", marginTop:4 }}>
+            <div style={{ height:12, borderRadius:999, background:"linear-gradient(90deg, " + C.teal + " 0%, " + C.teal + " " + Math.max(0, (pahLimitTemp - 4) / 40 * 100).toFixed(0) + "%, " + C.amber + " " + Math.max(0, (pahLimitTemp - 4) / 40 * 100).toFixed(0) + "%, " + C.amber + " " + Math.min(100, pahLimitTemp / 40 * 100).toFixed(0) + "%, " + C.red + " " + Math.min(100, pahLimitTemp / 40 * 100).toFixed(0) + "%)" }} />
+            <span style={{ position:"absolute", left:Math.max(0, Math.min(100, stackNow / 40 * 100)).toFixed(1) + "%", top:-5, width:4, height:22, marginLeft:-2, borderRadius:2, background:C.ink }} />
           </div>
-          <div style={{ fontSize:12, color:C.muted, marginTop:12 }}>VOC fit R2 {vocC && vocC.r2 != null ? vocC.r2.toFixed(2) : "--"} (cross-validated {vocC && vocC.r2_loo != null ? vocC.r2_loo.toFixed(2) : "--"}). PAH fit R2 {pahC && pahC.r2 != null ? pahC.r2.toFixed(2) : "--"}.</div>
-          <button type="button" onClick={()=>onNavigate("overview", "dashboard")} style={{ marginTop:16, minHeight:38, padding:"0 14px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.rund, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Detailed model dashboard</button>
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:C.muted, marginTop:6 }}><span>Cool</span><span>Hot</span></div>
+          <div style={{ fontSize:14, color:C.ink, marginTop:12, lineHeight:1.5 }}>{tempText}</div>
+          <div style={{ fontSize:13, color:C.muted, marginTop:6 }}>Outside {ambient.toFixed(1)} C ({ambientSource}).</div>
         </Panel>
       </div>
 
-      <ModelComparisonPanel today={today} opBinding={binding} opFc={fc} bufferDays={bufferDays} opLoo={opLoo} cm={creoModel} creoBed={creoBed} onNavigate={onNavigate} />
-
       <Panel>
-        <PanelTitle title="Season risk outlook" sub="Model VOC safe window for a fresh bed starting each month, and PAH temperature risk, at Boston climate averages." right={<div style={{ display:"flex", gap:14, flexWrap:"wrap" }}><LegendDot tone="ok" label="Low" /><LegendDot tone="warn" label="Moderate" /><LegendDot tone="bad" label="High" /></div>} />
-        <div style={{ overflowX:"auto" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(12, minmax(64px, 1fr))", gap:8, minWidth:820 }}>
+        <PanelTitle title="Carbon life through the year" sub="How long fresh carbon is expected to last if it is fitted in each month. Summer heat shortens it." right={<div style={{ display:"flex", gap:14, flexWrap:"wrap" }}><LegendDot tone="ok" label="Long" /><LegendDot tone="warn" label="Medium" /><LegendDot tone="bad" label="Short" /></div>} />
+        <div style={{ overflowX:"auto", paddingBottom:4 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(12, minmax(62px, 1fr))", gap:8, minWidth:780 }}>
             {outlook.map(o => (
-              <div key={o.name} style={{ padding:"12px 10px", borderRadius:12, background:C.surface2, border:"2px solid " + (o.m === nowMonth ? C.rund : "transparent") }}>
-                <div style={{ fontSize:12, fontWeight:600, color:C.muted }}>{o.name}{o.m === nowMonth ? " - now" : ""}</div>
-                <div style={{ height:96, display:"flex", alignItems:"flex-end", marginTop:8 }}>
-                  <div title={o.hrs + " active hours"} style={{ width:"100%", height:Math.max(4, Math.round(o.days / maxDays * 100)) + "%", borderRadius:6, background:toneColor(o.vocTone) }} />
+              <div key={o.name} style={{ padding:"12px 8px", borderRadius:12, background:C.surface2, border:"2px solid " + (o.m === nowMonth ? C.rund : "transparent"), textAlign:"center" }}>
+                <div style={{ fontSize:13, fontWeight:600, color:o.m === nowMonth ? C.rund : C.muted }}>{o.name}</div>
+                <div style={{ height:90, display:"flex", alignItems:"flex-end", marginTop:8 }}>
+                  <div title={o.days + " days"} style={{ width:"100%", height:Math.max(4, Math.round(o.days / maxDays * 100)) + "%", borderRadius:6, background:toneColor(o.vocTone) }} />
                 </div>
-                <div style={{ fontFamily:MONO, fontSize:16, fontWeight:600, marginTop:8 }}>{o.days}<span style={{ fontSize:11, color:C.muted, fontWeight:400 }}> d</span></div>
-                <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>PAH</div>
-                <span style={{ display:"inline-block", marginTop:2, padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:600, color:toneColor(o.pahTone), background:toneSoft(o.pahTone) }}>{o.pah}</span>
+                <div style={{ fontFamily:MONO, fontSize:16, fontWeight:600, marginTop:8 }}>{o.days}</div>
+                <div style={{ fontSize:12, color:C.muted }}>days</div>
               </div>
             ))}
           </div>
         </div>
         <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"space-between", gap:12, alignItems:"center", marginTop:14 }}>
-          <div style={{ fontSize:12, color:C.muted }}>Days assume {Math.round((settings.utilisationRate || 0.82) * 100)}% utilisation and the current calibration. Each new stack test recalibrates this strip.</div>
-          <button type="button" onClick={()=>onNavigate("forecast", "seasonplan")} style={{ minHeight:38, padding:"0 14px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.rund, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>12-month bed plan</button>
+          <div style={{ fontSize:13, color:C.muted }}>Based on {Math.round((settings.utilisationRate || 0.82) * 100)}% plant running time. Updates with every stack test.</div>
+          <button type="button" onClick={()=>onNavigate("forecast", "seasonplan")} style={linkBtn}>See the 12-month carbon plan</button>
         </div>
       </Panel>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(380px, 1fr))", gap:20 }}>
-        <Panel>
-          <PanelTitle title="VOC by stack test" right={<span style={{ fontSize:12, color:C.muted }}>mg/m3 - log scale - {vocOver} of {tests.filter(t=>t.voc != null).length} over limit</span>} />
-          <LogBars tests={tests} field="voc" limit={VOC_ELV} lo={0.05} hi={300} unit="mg/m3" />
-        </Panel>
-        <Panel>
-          <PanelTitle title="PAH by stack test" right={<span style={{ fontSize:12, color:C.muted }}>ug/m3 - log scale - {pahOver} of {tests.filter(t=>t.pah != null).length} over limit</span>} />
-          <LogBars tests={tests} field="pah" limit={PAH_ELV} lo={10} hi={10000} unit="ug/m3" />
-        </Panel>
-      </div>
+      <Panel>
+        <PanelTitle title="Stack test history" sub={"Each bar is one stack test. Red bars were over the permit limit (" + vocOver + " of " + tests.filter(t=>t.voc != null).length + " for VOC, " + pahOver + " of " + tests.filter(t=>t.pah != null).length + " for PAH)."} />
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap:24 }}>
+          <div><div style={{ fontSize:14, fontWeight:600, marginBottom:8 }}>VOC</div><LogBars tests={tests} field="voc" limit={VOC_ELV} lo={0.05} hi={300} unit="mg/m3" /></div>
+          <div><div style={{ fontSize:14, fontWeight:600, marginBottom:8 }}>PAH</div><LogBars tests={tests} field="pah" limit={PAH_ELV} lo={10} hi={10000} unit="ug/m3" /></div>
+        </div>
+        <div style={{ fontSize:13, color:C.muted, marginTop:10 }}>Bars use a log scale so very small and very large results both fit.</div>
+      </Panel>
 
-      <Panel style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:16 }}>
-        <div><Label>Creosote stock</Label><div style={{ fontFamily:MONO, fontSize:22, fontWeight:600, marginTop:4 }}>{lastReading && lastReading.totalKg != null ? (lastReading.totalKg / 1000).toFixed(1) + " t" : "--"}</div><div style={{ fontSize:12, color:C.muted }}>{lastReading ? "4 tanks - SCADA " + fmtDayMonth(lastReading.date) : "Awaiting creosote log sync"}</div></div>
-        <div><Label>Used since last reading</Label><div style={{ fontFamily:MONO, fontSize:22, fontWeight:600, marginTop:4 }}>{lastReading && lastReading.usageKg != null ? (lastReading.usageKg / 1000).toFixed(1) + " t" : "--"}</div><div style={{ fontSize:12, color:C.muted }}>{lastReading && lastReading.workingDays != null ? lastReading.workingDays + " working days" : ""}</div></div>
-        <div><Label>Last delivery</Label><div style={{ fontFamily:MONO, fontSize:22, fontWeight:600, marginTop:4 }}>{lastDel && lastDel.qtyKg != null ? (lastDel.qtyKg / 1000).toFixed(1) + " t" : "--"}</div><div style={{ fontSize:12, color:C.muted }}>{lastDel ? (lastDel.certNo || "") + " - " + fmtDayMonth(lastDel.date) + (lastDel.flashpoint != null ? " - FP " + lastDel.flashpoint + " C" : "") : ""}</div></div>
-        <div><Label>Charge sync</Label><div style={{ fontSize:15, fontWeight:600, marginTop:8, color:chargeImport && chargeImport.lastImportedAt ? C.teal : C.muted }}>{chargeImport && chargeImport.lastImportedAt ? "Connected" : "No sync yet"}</div><div style={{ fontSize:12, color:C.muted }}>{chargeImport && chargeImport.lastImportedAt ? "Last " + formatSyncStamp(chargeImport.lastImportedAt) : ""}</div></div>
-        <div><Label>Creosote log sync</Label><div style={{ fontSize:15, fontWeight:600, marginTop:8, color:creoImport && creoImport.lastImportedAt ? C.teal : C.muted }}>{creoImport && creoImport.lastImportedAt ? "Connected" : "No sync yet"}</div><div style={{ fontSize:12, color:C.muted }}>{creoImport && creoImport.lastImportedAt ? "Last " + formatSyncStamp(creoImport.lastImportedAt) : ""}</div></div>
+      <Panel style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(190px, 100%), 1fr))", gap:16 }}>
+        <div><div style={{ fontSize:13, color:C.muted, fontWeight:600 }}>Creosote in stock</div><div style={{ fontFamily:MONO, fontSize:22, fontWeight:600, marginTop:4 }}>{lastReading && lastReading.totalKg != null ? (lastReading.totalKg / 1000).toFixed(1) + " t" : "--"}</div><div style={{ fontSize:13, color:C.muted }}>{lastReading ? "Tank reading " + fmtDayMonth(lastReading.date) : "Load the creosote log to see this"}</div></div>
+        <div><div style={{ fontSize:13, color:C.muted, fontWeight:600 }}>Used on this carbon bed</div><div style={{ fontFamily:MONO, fontSize:22, fontWeight:600, marginTop:4 }}>{creoBed ? Math.round(creoBed.tonnes) + " t" : "--"}</div><div style={{ fontSize:13, color:C.muted }}>{creoBed && creoBed.source === "log" ? "From the creosote log" : "Estimated"}</div></div>
+        <div><div style={{ fontSize:13, color:C.muted, fontWeight:600 }}>Last creosote delivery</div><div style={{ fontFamily:MONO, fontSize:22, fontWeight:600, marginTop:4 }}>{lastDel && lastDel.qtyKg != null ? (lastDel.qtyKg / 1000).toFixed(1) + " t" : "--"}</div><div style={{ fontSize:13, color:C.muted }}>{lastDel ? fmtDayMonth(lastDel.date) + (lastDel.flashpoint != null ? ", flash point " + lastDel.flashpoint + " C" : "") : ""}</div></div>
+        <div><div style={{ fontSize:13, color:C.muted, fontWeight:600 }}>Data feeds</div><div style={{ fontSize:14, marginTop:6 }}><span style={{ color:chargeImport && chargeImport.lastImportedAt ? C.teal : C.muted, fontWeight:600 }}>{chargeImport && chargeImport.lastImportedAt ? "Charges connected" : "Charges: no sync"}</span></div><div style={{ fontSize:14, marginTop:2 }}><span style={{ color:creoImport && creoImport.lastImportedAt ? C.teal : C.muted, fontWeight:600 }}>{creoImport && creoImport.lastImportedAt ? "Creosote log loaded" : "Creosote log: not loaded"}</span></div></div>
+      </Panel>
+
+      <Panel>
+        <Fold title="What do these terms mean?">
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap:"12px 24px", fontSize:14, lineHeight:1.5 }}>
+            {[
+              ["Carbon bed", "A tank of activated carbon that the extracted fumes pass through. The carbon soaks up the vapours until it is full and must be replaced."],
+              ["VOC", "Volatile organic compounds: the solvent-like vapour given off by creosote. The permit limit is " + VOC_ELV + " mg/m3."],
+              ["PAH", "Polycyclic aromatic hydrocarbons: heavier tar compounds in creosote fumes. The permit limit is " + PAH_ELV.toLocaleString("en-GB") + " ug/m3. They break through more easily when the gas is warm."],
+              ["Permit limit", "The maximum emission allowed by the Environment Agency permit (EPR/A2/1) at the stack."],
+              ["Stack test", "An independent, certified (MCERTS) measurement of what is actually leaving the stack. It is the evidence the EA relies on."],
+              ["Carbon change", "Replacing the spent carbon with fresh carbon. Record it here so the countdown and forecast restart."],
+            ].map(g => <div key={g[0]}><b>{g[0]}.</b> <span style={{ color:C.muted }}>{g[1]}</span></div>)}
+          </div>
+        </Fold>
       </Panel>
     </div>
   );
@@ -5641,8 +5717,8 @@ function ModelComparisonPanel({ today, opBinding, opFc, bufferDays, opLoo, cm, c
   );
   return (
     <Panel>
-      <PanelTitle title="Model comparison - current bed" sub="The operative run-hours model drives scheduling. The creosote-throughput model runs alongside it on trial until stack tests confirm it." right={<button type="button" onClick={()=>onNavigate("stack", "compliance")} style={{ minHeight:38, padding:"0 14px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.rund, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Model fit</button>} />
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))", gap:16 }}>
+      <PanelTitle title="Second opinion: creosote-based forecast (trial)" sub="The main forecast uses plant running hours. A second model based on creosote used is being trialled alongside it until stack tests confirm which is more accurate." right={<button type="button" onClick={()=>onNavigate("stack", "compliance")} style={{ minHeight:38, padding:"0 14px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.rund, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Model fit</button>} />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap:16 }}>
         {col("Run hours", "Operative", "accent", [
           ["Forecast limit", opBinding.row ? fmtDateShort(opBinding.row.date) : "None in 12 months"],
           ["Uncertainty (unseen tests)", opLoo.voc != null ? "x" + Math.exp(opLoo.voc).toFixed(1) : "--"],
@@ -5666,9 +5742,10 @@ function ModelComparisonPanel({ today, opBinding, opFc, bufferDays, opLoo, cm, c
   );
 }
 
-function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoModel, creoBed }) {
+function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoModel, creoBed, opLoo, onNavigate }) {
   const today = useMemo(()=>new Date(), []);
   const [basis, setBasis] = useState("hours");
+  const current = useMemo(()=>forecastFrom(today, activeHrs, settings, vocC, pahC), [today, activeHrs, settings, vocC, pahC]);
   const trialReady = !!(creoModel && creoModel.ready);
   const plan = useMemo(()=>{
     const windowStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -5731,12 +5808,14 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
           {basis === "creo" ? <span style={{ fontSize:12, color:C.amber }}>Trial model, at {creoBed.rate.toFixed(1)} t/day creosote. Not for scheduling until confirmed by stack tests.</span> : null}
         </div>
       ) : null}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:16 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap:16 }}>
         <StatPill label="Changeouts" value={plan.changeouts} unit="" sub="single bed, no lead-lag" />
         <StatPill label="Carbon cost" value={"GBP " + (plan.changeouts * CHANGEOUT_COST_GBP / 1000).toFixed(1) + "k"} unit="" sub={plan.changeouts + " x GBP " + CHANGEOUT_COST_GBP.toLocaleString("en-GB")} />
         <StatPill label="Next changeout" value={next && next.end ? fmtDayMonth(next.end) : "--"} unit="" color={C.rund} sub={next && next.testDate ? "test by " + fmtDayMonth(next.testDate) : ""} />
         <StatPill label="Shortest bed life" value={shortest < 9999 ? shortest : "--"} unit="days" color={C.red} sub="summer PAH and VOC season" />
       </div>
+
+      <ModelComparisonPanel today={today} opBinding={current.binding} opFc={current.fc} bufferDays={current.bufferDays} opLoo={opLoo} cm={creoModel} creoBed={creoBed} onNavigate={onNavigate || (()=>{})} />
 
       <Panel>
         <PanelTitle title="Bed timeline" sub="Each bar is one carbon bed, ending at its forecast limit. Diamonds mark the confirmatory stack test." right={<div style={{ display:"flex", gap:14, flexWrap:"wrap" }}><LegendDot tone="ok" label="60 d or more" /><LegendDot tone="warn" label="35 to 59 d" /><LegendDot tone="bad" label="under 35 d" /></div>} />
@@ -5750,7 +5829,7 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
             </div>
             <div style={{ position:"relative" }}>
               <div style={{ position:"absolute", left:120, right:0, top:0, bottom:0, display:"grid", gridTemplateColumns:"repeat(12, minmax(0, 1fr))", pointerEvents:"none" }}>
-                {plan.months.map(m => <div key={m.key} style={{ borderLeft:`1px solid ${C.border}`, background:m.pahSeason ? TINT.amberBg : "transparent" }} />)}
+                {plan.months.map(m => <div key={m.key} style={{ borderLeft:`1px solid ${C.border}`, background:m.pahSeason ? alpha(C.amber, 6) : "transparent" }} />)}
               </div>
               <div style={{ position:"absolute", left:"calc(120px + (100% - 120px) * " + (plan.pos(today) / 100).toFixed(4) + ")", top:0, bottom:0, width:2, background:C.rund }} />
               {plan.beds.map((b, i) => {
@@ -5762,7 +5841,7 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
                     <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{i === 0 ? "Current bed" : "Bed +" + i}</div>
                     <div style={{ position:"relative", height:26 }}>
                       <div title={fmtDateShort(b.start) + " to " + (b.end ? fmtDateShort(b.end) : "beyond horizon") + " (" + b.type + ")"} style={{ position:"absolute", top:0, bottom:0, left:s + "%", width:Math.max(0.5, e - s) + "%", background:toneColor(tone), borderRadius:6, display:"flex", alignItems:"center", overflow:"hidden" }}>
-                        <span style={{ fontFamily:MONO, fontSize:11, fontWeight:600, color:C.bg, padding:"0 8px", whiteSpace:"nowrap" }}>{b.life ? b.life + " d" : ""}</span>
+                        <span style={{ fontFamily:MONO, fontSize:12, fontWeight:600, color:C.bg, padding:"0 8px", whiteSpace:"nowrap" }}>{b.life ? b.life + " d" : ""}</span>
                       </div>
                       {testPos != null && testPos > 0 && testPos < 100 ? <div title={"Stack test by " + fmtDateShort(b.testDate)} style={{ position:"absolute", top:7, left:testPos + "%", width:12, height:12, marginLeft:-6, transform:"rotate(45deg)", background:C.rund, border:`2px solid ${C.surface}` }} /> : null}
                     </div>
@@ -5775,7 +5854,7 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
         <div style={{ fontSize:12, color:C.muted, marginTop:12 }}>Shaded months: PAH temperature season at climate averages. Each later bed is assumed to start fresh on its predecessor's forecast date; dates move with every stack test and recalibration.</div>
       </Panel>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(380px, 1fr))", gap:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap:20 }}>
         <Panel>
           <PanelTitle title="Seasonal bed life" sub="Mean model VOC safe window for a fresh bed" />
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
@@ -5798,7 +5877,7 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
               ["Testing", "Test more, change less.", "A stack test is GBP " + STACK_TEST_COST_GBP.toLocaleString("en-GB") + " against GBP " + CHANGEOUT_COST_GBP.toLocaleString("en-GB") + " for a changeout, and each one sharpens the forecast."],
             ].map(r => (
               <div key={r[0]} style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
-                <span style={{ flex:"0 0 auto", padding:"3px 10px", borderRadius:999, fontSize:11, fontWeight:600, background:"var(--accent-soft)", color:C.rund }}>{r[0]}</span>
+                <span style={{ flex:"0 0 auto", padding:"3px 10px", borderRadius:999, fontSize:12, fontWeight:600, background:"var(--accent-soft)", color:C.rund }}>{r[0]}</span>
                 <div style={{ fontSize:13 }}><b>{r[1]}</b> <span style={{ color:C.muted }}>{r[2]}</span></div>
               </div>
             ))}
@@ -5818,13 +5897,21 @@ function ComplianceTab({ stackData, vocC, pahC, creoModel, opLoo }) {
   const pahOver = pahTests.filter(t=>t.pah > PAH_ELV).length;
   const latestPass = latest && (latest.voc == null || latest.voc <= VOC_ELV) && (latest.pah == null || latest.pah <= PAH_ELV);
   const band = Math.exp(vocUncertaintyMultiplier(vocC));
-  const pts = tests.filter(t=>t.pah != null && t.pah > 0 && t.stackTemp != null);
+  const ptsRaw = tests.filter(t=>t.pah != null && t.pah > 0 && t.stackTemp != null);
+  // Label placement: put a label on the left when the point is near the right edge or a
+  // neighbour's label would collide (within ~6% across and ~8% up/down).
+  const pts = ptsRaw.map(t => ({ ...t })).sort((a, b) => a.stackTemp - b.stackTemp);
+  pts.forEach((t, i) => {
+    const x = (t.stackTemp - 10) / 25 * 100, y = (Math.log(t.pah) / Math.LN10 - 1) / 3 * 100;
+    const clash = pts.slice(0, i).some(o => !o.labelLeft && Math.abs((o.stackTemp - 10) / 25 * 100 - x) < 6 && Math.abs((Math.log(o.pah) / Math.LN10 - 1) / 3 * 100 - y) < 8);
+    t.labelLeft = x > 85 || clash;
+  });
   const tMin = 10, tMax = 35;
   const breachLo = pahFailTemp(1500, pahC), breachHi = pahFailTemp(200, pahC);
   const xPos = t => Math.max(0, Math.min(100, (t - tMin) / (tMax - tMin) * 100));
   const yPos = v => Math.max(0, Math.min(100, (log10(v) - 1) / 3 * 100));
   const zoneL = xPos(Math.min(breachLo, breachHi)), zoneR = xPos(Math.max(breachLo, breachHi));
-  const th = { textAlign:"left", padding:"10px 12px", fontSize:11, letterSpacing:"0.08em", textTransform:"uppercase", color:C.muted, fontWeight:600, borderBottom:`1px solid ${C.border}`, whiteSpace:"nowrap" };
+  const th = { textAlign:"left", padding:"10px 12px", fontSize:12, letterSpacing:"0.08em", textTransform:"uppercase", color:C.muted, fontWeight:600, borderBottom:`1px solid ${C.border}`, whiteSpace:"nowrap" };
   const td = { padding:"10px 12px", borderBottom:`1px solid ${C.border}`, fontSize:13 };
   const hoursFlagged = tests.filter(t => t.workingDays && t.activeHrs / t.workingDays > 24);
 
@@ -5834,33 +5921,33 @@ function ComplianceTab({ stackData, vocC, pahC, creoModel, opLoo }) {
         <Label>Stack tests and compliance - MCERTS, Emission Point A4</Label>
         <h1 style={{ margin:"6px 0 0", fontFamily:HEAD_FONT, fontWeight:600, fontSize:"clamp(22px, 3vw, 30px)", color:C.ink }}>PAH tracks stack temperature. VOC tracks bed age.</h1>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:16 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap:16 }}>
         <StatPill label="Tests on record" value={tests.length} unit="" sub={tests.length ? fmtDayMonth(tests[0].date) + " " + String(tests[0].date).slice(0,4) + " to " + fmtDayMonth(latest.date) + " " + String(latest.date).slice(0,4) : ""} />
         <StatPill label="VOC over limit" value={vocOver + " / " + vocTests.length} unit="" color={vocOver ? C.red : C.teal} sub={"limit " + VOC_ELV + " mg/m3"} />
         <StatPill label="PAH over limit" value={pahOver + " / " + pahTests.length} unit="" color={pahOver ? C.red : C.teal} sub={"limit " + PAH_ELV.toLocaleString("en-GB") + " ug/m3"} />
         <StatPill label={"Latest" + (latest ? " - " + latest.period : "")} value={latest ? (latestPass ? "Pass" : "Over") : "--"} unit="" color={latestPass ? C.teal : C.red} sub={latest ? "VOC " + (latest.voc != null ? latest.voc : "--") + " - PAH " + (latest.pah != null ? latest.pah : "--") + " - " + fmtDayMonth(latest.date) : ""} />
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(400px, 1fr))", gap:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(400px, 100%), 1fr))", gap:20 }}>
         <Panel>
           <PanelTitle title="PAH against stack temperature" sub={"Each dot is a test. Shaded: model breach zone (" + Math.min(breachLo, breachHi).toFixed(1) + " to " + Math.max(breachLo, breachHi).toFixed(1) + " C across 200 to 1,500 active hours)."} />
           <div style={{ display:"grid", gridTemplateColumns:"44px minmax(0, 1fr)", gap:8 }}>
-            <div style={{ position:"relative", height:280, fontSize:10, color:C.muted, fontFamily:MONO }}>
+            <div style={{ position:"relative", height:280, fontSize:12, color:C.muted, fontFamily:MONO }}>
               <span style={{ position:"absolute", right:0, top:-6 }}>10k</span><span style={{ position:"absolute", right:0, top:"31%" }}>1k</span><span style={{ position:"absolute", right:0, top:"64%" }}>100</span><span style={{ position:"absolute", right:0, bottom:-6 }}>10</span>
             </div>
             <div style={{ position:"relative", height:280, borderLeft:`1px solid ${C.border}`, borderBottom:`1px solid ${C.border}` }}>
               <div style={{ position:"absolute", top:0, bottom:0, left:zoneL + "%", width:Math.max(1, zoneR - zoneL) + "%", background:TINT.redBg }} />
               <div style={{ position:"absolute", left:0, right:0, bottom:yPos(PAH_ELV) + "%", borderTop:`2px dashed ${C.red}` }} />
-              <div style={{ position:"absolute", left:6, bottom:"calc(" + yPos(PAH_ELV) + "% + 4px)", fontSize:11, color:C.red, fontWeight:600 }}>PAH limit</div>
+              <div style={{ position:"absolute", left:6, bottom:"calc(" + yPos(PAH_ELV) + "% + 4px)", fontSize:12, color:C.red, fontWeight:600 }}>PAH limit</div>
               {pts.map(p => (
                 <Fragment key={p.period}>
                   <div title={p.period + ": " + p.stackTemp + " C stack, PAH " + p.pah} style={{ position:"absolute", width:12, height:12, margin:"0 0 -6px -6px", borderRadius:"50%", background:p.pah > PAH_ELV ? C.red : C.rund, border:`2px solid ${C.surface}`, left:xPos(p.stackTemp) + "%", bottom:yPos(p.pah) + "%" }} />
-                  <div style={{ position:"absolute", fontSize:10, color:C.muted, fontFamily:MONO, marginLeft:10, marginBottom:4, left:xPos(p.stackTemp) + "%", bottom:yPos(p.pah) + "%" }}>{p.period}</div>
+                  <div style={{ position:"absolute", fontSize:12, color:C.muted, fontFamily:MONO, marginBottom:4, left:xPos(p.stackTemp) + "%", bottom:yPos(p.pah) + "%", transform:p.labelLeft ? "translateX(calc(-100% - 10px))" : "translateX(10px)", whiteSpace:"nowrap" }}>{p.period}</div>
                 </Fragment>
               ))}
             </div>
             <div />
-            <div style={{ position:"relative", height:18, fontSize:10, color:C.muted, fontFamily:MONO }}>
+            <div style={{ position:"relative", height:18, fontSize:12, color:C.muted, fontFamily:MONO }}>
               <span style={{ position:"absolute", left:0 }}>{tMin} C</span><span style={{ position:"absolute", left:"50%", transform:"translateX(-50%)" }}>{(tMin + tMax) / 2} C stack</span><span style={{ position:"absolute", right:0 }}>{tMax} C</span>
             </div>
           </div>
@@ -5877,13 +5964,13 @@ function ComplianceTab({ stackData, vocC, pahC, creoModel, opLoo }) {
           {creoModel && creoModel.ready ? (
             <div style={{ marginTop:16 }}>
               <Label>Prediction error on unseen tests (leave-one-out)</Label>
-              <table style={{ width:"100%", borderCollapse:"collapse", marginTop:8 }}>
+              <div style={{ overflowX:"auto" }}><table style={{ width:"100%", borderCollapse:"collapse", marginTop:8, minWidth:420 }}>
                 <thead><tr><th style={th}>Model</th><th style={th}>VOC band</th><th style={th}>PAH band</th><th style={th}>VOC fit R2</th></tr></thead>
                 <tbody>
                   <tr><td style={td}>Run hours + ambient (operative)</td><td style={{ ...td, fontFamily:MONO }}>{opLoo.voc != null ? "x" + Math.exp(opLoo.voc).toFixed(2) : "--"}</td><td style={{ ...td, fontFamily:MONO }}>{opLoo.pah != null ? "x" + Math.exp(opLoo.pah).toFixed(2) : "--"}</td><td style={{ ...td, fontFamily:MONO }}>{vocC && vocC.r2 != null ? vocC.r2.toFixed(2) : "--"}</td></tr>
                   <tr><td style={td}>Creosote throughput + stack temp (trial)</td><td style={{ ...td, fontFamily:MONO, color:C.teal, fontWeight:600 }}>{"x" + Math.exp(creoModel.vocLoo).toFixed(2)}</td><td style={{ ...td, fontFamily:MONO, color:C.teal, fontWeight:600 }}>{"x" + Math.exp(creoModel.pahLoo).toFixed(2)}</td><td style={{ ...td, fontFamily:MONO }}>{creoModel.voc.r2.toFixed(2)}</td></tr>
                 </tbody>
-              </table>
+              </table></div>
               <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Lower band = better prediction of tests the model has not seen. Trial VOC: ln VOC = {creoModel.voc.a.toFixed(2)} ln(t) + {creoModel.voc.b.toFixed(3)} T_stack {creoModel.voc.c < 0 ? "-" : "+"} {Math.abs(creoModel.voc.c).toFixed(2)}, n = {creoModel.n}.</div>
             </div>
           ) : null}
@@ -5926,13 +6013,165 @@ function ComplianceTab({ stackData, vocC, pahC, creoModel, opLoo }) {
   );
 }
 
+// ============================================================
+// v2.4.0 CARBON CHANGES - simple recording and history
+// ============================================================
+// Bed start dates before in-app recording began, taken from the stack test records.
+const CHANGEOUT_HISTORY_SEED = [
+  { date:"2024-09-01", bed:"Bed 1", source:"records" },
+  { date:"2025-06-01", bed:"Bed 2", source:"records" },
+  { date:"2025-08-01", bed:"Bed 3", source:"records" },
+  { date:"2026-01-12", bed:"Bed 4", source:"records" },
+  { date:"2026-03-20", bed:"Bed 5", source:"records" },
+  { date:"2026-06-05", bed:"Bed 6", source:"records" },
+  { date:"2026-08-25", bed:"Bed 7", source:"records" },
+  { date:"2026-11-05", bed:"Bed 8", source:"records" },
+];
+function changeoutHistory(stored, lastChangeout) {
+  const list = (stored && stored.length ? stored : CHANGEOUT_HISTORY_SEED).slice();
+  const cur = String(lastChangeout || "").slice(0, 10);
+  if (cur && !list.some(c => c.date === cur)) list.push({ date:cur, bed:"", source:"settings" });
+  list.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  let n = 0;
+  return list.map((c, i) => {
+    n += 1;
+    const next = list[i + 1];
+    return { ...c, bed: c.bed || ("Bed " + n), removed: next ? next.date : null, days: next ? daysBetween(c.date, next.date) : null, current: !next };
+  });
+}
+
+function ChangeoutDialog({ open, onClose, onSave, lastChangeout, userName }) {
+  const todayIso = isoDateFromDate(new Date());
+  const [form, setForm] = useState({ date:todayIso, batchRef:"", massKg:"6000", fittedBy:"", notes:"" });
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const firstRef = useRef(null);
+  useEffect(() => {
+    if (open) {
+      setForm({ date:todayIso, batchRef:"", massKg:"6000", fittedBy:userName || "", notes:"" });
+      setError("");
+      setTimeout(() => { if (firstRef.current) firstRef.current.focus(); }, 30);
+    }
+  }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = e => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  const save = async () => {
+    if (!form.date) { setError("Enter the date the new carbon went in."); return; }
+    if (form.date > todayIso) { setError("The date cannot be in the future."); return; }
+    if (form.date <= String(lastChangeout).slice(0, 10)) { setError("The date must be after the current bed's start (" + fmtDateShort(lastChangeout) + ")."); return; }
+    setSaving(true);
+    try { await onSave({ ...form, massKg: form.massKg === "" ? null : Number(form.massKg) }); onClose(); }
+    catch (e) { setError("Could not save: " + e.message); }
+    setSaving(false);
+  };
+  const field = { display:"flex", flexDirection:"column", gap:6, fontSize:13, fontWeight:600, color:C.ink };
+  const input = { height:44, padding:"0 12px", borderRadius:10, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, fontSize:15, fontFamily:"inherit", boxSizing:"border-box", width:"100%" };
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(5,10,16,0.62)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="changeout-title" onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:520, maxHeight:"92vh", overflowY:"auto", background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"24px 24px 20px", boxSizing:"border-box" }}>
+        <h2 id="changeout-title" style={{ margin:0, fontFamily:HEAD_FONT, fontSize:22, fontWeight:600, color:C.ink }}>Record a carbon change</h2>
+        <p style={{ margin:"8px 0 18px", fontSize:14, color:C.muted, lineHeight:1.5 }}>Use this when fresh carbon has been put into the bed. The countdown restarts from this date and the forecast updates straight away.</p>
+        <div style={{ display:"grid", gap:14 }}>
+          <label style={field}>Date the new carbon went in
+            <input ref={firstRef} type="date" value={form.date} max={todayIso} onChange={e => setForm(f => ({ ...f, date:e.target.value }))} style={input} />
+          </label>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(180px, 100%), 1fr))", gap:14 }}>
+            <label style={field}>Carbon batch or delivery ref (optional)
+              <input type="text" value={form.batchRef} placeholder="e.g. CX65 batch number" onChange={e => setForm(f => ({ ...f, batchRef:e.target.value }))} style={input} />
+            </label>
+            <label style={field}>Amount fitted (kg)
+              <input type="number" inputMode="numeric" value={form.massKg} onChange={e => setForm(f => ({ ...f, massKg:e.target.value }))} style={input} />
+            </label>
+          </div>
+          <label style={field}>Fitted by
+            <input type="text" value={form.fittedBy} onChange={e => setForm(f => ({ ...f, fittedBy:e.target.value }))} style={input} />
+          </label>
+          <label style={field}>Notes (optional)
+            <textarea value={form.notes} rows={2} onChange={e => setForm(f => ({ ...f, notes:e.target.value }))} style={{ ...input, height:"auto", padding:"10px 12px", resize:"vertical" }} />
+          </label>
+        </div>
+        <div style={{ marginTop:14, padding:"10px 12px", borderRadius:10, background:TINT.blueBg, color:C.ink, fontSize:13, lineHeight:1.5 }}>
+          The current bed (fitted {fmtDateShort(lastChangeout)}) will be closed off on this date. Downtime logged against it is cleared for the new bed.
+        </div>
+        {error ? <div role="alert" style={{ marginTop:12, color:C.red, fontSize:14, fontWeight:600 }}>{error}</div> : null}
+        <div style={{ display:"flex", gap:10, justifyContent:"flex-end", flexWrap:"wrap", marginTop:18 }}>
+          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn variant="primary" onClick={save} disabled={saving}>{saving ? "Saving..." : "Record carbon change"}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CarbonChangesTab({ history, stackData, canEdit, onRecord, onUndoLast }) {
+  const rows = history.slice().reverse();
+  const tests = sortedTests(stackData);
+  const done = history.filter(h => h.days != null);
+  const avg = done.length ? Math.round(done.reduce((a, h) => a + h.days, 0) / done.length) : null;
+  const shortest = done.length ? done.reduce((m, h) => h.days < m.days ? h : m) : null;
+  const longest = done.length ? done.reduce((m, h) => h.days > m.days ? h : m) : null;
+  const th = { textAlign:"left", padding:"10px 12px", fontSize:12, letterSpacing:"0.06em", textTransform:"uppercase", color:C.muted, fontWeight:600, borderBottom:`1px solid ${C.border}`, whiteSpace:"nowrap" };
+  const td = { padding:"12px", borderBottom:`1px solid ${C.border}`, fontSize:14, verticalAlign:"top" };
+  const last = history[history.length - 1];
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+      <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"space-between", alignItems:"flex-end", gap:12 }}>
+        <div>
+          <Label>Carbon bed history</Label>
+          <h1 style={{ margin:"6px 0 0", fontFamily:HEAD_FONT, fontWeight:600, fontSize:"clamp(22px, 3vw, 30px)", color:C.ink }}>{history.length} carbon beds fitted since {history.length ? fmtDateShort(history[0].date) : "--"}</h1>
+        </div>
+        {canEdit ? <Btn variant="primary" onClick={onRecord}>Record carbon change</Btn> : null}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap:16 }}>
+        <StatPill label="Current bed fitted" value={last ? fmtDayMonth(last.date) : "--"} unit="" color={C.rund} sub={last ? daysBetween(last.date, new Date()) + " days in service" : ""} />
+        <StatPill label="Average bed life" value={avg != null ? avg : "--"} unit="days" sub={done.length + " completed beds"} />
+        <StatPill label="Shortest" value={shortest ? shortest.days : "--"} unit="days" color={C.amber} sub={shortest ? shortest.bed + ", fitted " + fmtDateShort(shortest.date) : ""} />
+        <StatPill label="Longest" value={longest ? longest.days : "--"} unit="days" color={C.teal} sub={longest ? longest.bed + ", fitted " + fmtDateShort(longest.date) : ""} />
+      </div>
+      <Panel style={{ padding:"8px 12px 12px" }}>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", minWidth:720 }}>
+            <thead><tr><th style={th}>Bed</th><th style={th}>Fitted</th><th style={th}>Changed</th><th style={th}>Days in service</th><th style={th}>Stack tests</th><th style={th}>Details</th></tr></thead>
+            <tbody>
+              {rows.map(h => {
+                // Tests that carry a bed label use it (a test on a changeout morning belongs to the old bed);
+                // others are matched by date.
+                const inBed = tests.filter(t => t.bedId ? t.bedId === h.bed : (t.date >= h.date && (!h.removed || t.date < h.removed)));
+                const over = inBed.filter(t => (t.voc != null && t.voc > VOC_ELV) || (t.pah != null && t.pah > PAH_ELV));
+                return (
+                  <tr key={h.date}>
+                    <td style={{ ...td, fontWeight:600 }}>{h.bed}{h.current ? <span style={{ marginLeft:8 }}><Chip tone="accent">In use</Chip></span> : null}</td>
+                    <td style={{ ...td, fontFamily:MONO }}>{fmtDateShort(h.date)}</td>
+                    <td style={{ ...td, fontFamily:MONO }}>{h.removed ? fmtDateShort(h.removed) : "--"}</td>
+                    <td style={{ ...td, fontFamily:MONO }}>{h.days != null ? h.days : daysBetween(h.date, new Date()) + " so far"}</td>
+                    <td style={td}>{inBed.length ? inBed.map(t => t.period).join(", ") : "None"}{over.length ? <div style={{ marginTop:4 }}><Chip tone="bad">{over.length} over limit</Chip></div> : inBed.length ? <div style={{ marginTop:4 }}><Chip tone="ok">All within limits</Chip></div> : null}</td>
+                    <td style={{ ...td, color:C.muted, fontSize:13 }}>{[h.batchRef, h.massKg ? h.massKg.toLocaleString("en-GB") + " kg" : "", h.fittedBy ? "by " + h.fittedBy : "", h.notes].filter(Boolean).join(" - ") || (h.source === "records" ? "From stack test records" : "")}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+      {canEdit && last && last.source === "app" ? (
+        <div style={{ fontSize:13, color:C.muted }}>Recorded the latest change by mistake? <button type="button" onClick={onUndoLast} style={{ background:"none", border:"none", color:C.red, fontWeight:600, cursor:"pointer", fontSize:13, fontFamily:"inherit", padding:0 }}>Undo the {fmtDateShort(last.date)} change</button></div>
+      ) : null}
+    </div>
+  );
+}
+
 const NAV_AREAS = [
-  { id:"overview",  label:"Overview",          tabs:[{ id:"home", label:"Summary" }, { id:"dashboard", label:"Model dashboard" }] },
-  { id:"forecast",  label:"Forecast",          tabs:[{ id:"forecast", label:"Bed forecast" }, { id:"seasonplan", label:"12-month plan" }, { id:"tempanalysis", label:"Temperature analysis" }] },
-  { id:"stack",     label:"Stack Tests",       tabs:[{ id:"compliance", label:"Compliance" }, { id:"stack", label:"Test records" }, { id:"bat", label:"BAT compliance" }] },
-  { id:"plant",     label:"Plant Data",        tabs:[{ id:"cycles", label:"Charge cycles" }, { id:"thermal", label:"Thermal monitoring" }] },
-  { id:"materials", label:"Creosote & Carbon", tabs:[{ id:"coa", label:"Creosote and CoA" }, { id:"carbonquality", label:"Carbon quality" }] },
-  { id:"admin",     label:"Model & Admin",     tabs:[{ id:"modeldetails", label:"Model details" }, { id:"settings", label:"Settings" }, { id:"documents", label:"Documents" }] },
+  { id:"overview",  label:"Overview",          tabs:[{ id:"home", label:"Summary" }, { id:"dashboard", label:"Engineering detail" }] },
+  { id:"forecast",  label:"Forecast",          tabs:[{ id:"seasonplan", label:"12-month plan" }, { id:"forecast", label:"Bed forecast" }, { id:"tempanalysis", label:"Temperature analysis" }] },
+  { id:"stack",     label:"Stack tests",       tabs:[{ id:"compliance", label:"Compliance" }, { id:"stack", label:"Test records" }, { id:"bat", label:"BAT compliance" }] },
+  { id:"plant",     label:"Plant data",        tabs:[{ id:"changes", label:"Carbon changes" }, { id:"cycles", label:"Charge cycles" }, { id:"thermal", label:"Thermal monitoring" }] },
+  { id:"materials", label:"Creosote & carbon", tabs:[{ id:"coa", label:"Creosote and CoA" }, { id:"carbonquality", label:"Carbon quality" }] },
+  { id:"admin",     label:"Settings",          tabs:[{ id:"settings", label:"Settings" }, { id:"documents", label:"Documents" }, { id:"modeldetails", label:"Model details" }] },
 ];
 
 // The clock lives in its own component so the rest of the app does not re-render every tick.
@@ -5946,22 +6185,22 @@ function AppHeader({ area, onArea, theme, onToggleTheme, user, syncLabel, syncEr
   const initials = user && user.username ? user.username.slice(0, 2).toUpperCase() : "--";
   return (
     <header style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, position:"sticky", top:0, zIndex:20 }}>
-      <div style={{ maxWidth:1376, margin:"0 auto", display:"flex", flexWrap:"wrap", alignItems:"center", gap:"12px 24px", padding:"12px 24px" }}>
+      <div className="hdr" style={{ maxWidth:1376, margin:"0 auto", display:"flex", flexWrap:"wrap", alignItems:"center", gap:"12px 24px", padding:"12px 24px" }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
           <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><path d="M17 2 30 9.5v15L17 32 4 24.5v-15z" fill="none" stroke={C.rund} strokeWidth="2" /><path d="M11 13.5h12M11 17h12M11 20.5h12" stroke={C.rund} strokeWidth="2" strokeLinecap="round" /></svg>
           <div>
             <div style={{ fontFamily:HEAD_FONT, fontWeight:700, fontSize:17, color:C.ink }}>Carbon Bed Model</div>
-            <div style={{ fontSize:12, color:C.muted }}>A4 GAC abatement - Permit EPR/A2/1</div>
+            <div className="hdr-sub" style={{ fontSize:12, color:C.muted }}>A4 GAC abatement - Permit EPR/A2/1</div>
           </div>
         </div>
-        <nav aria-label="Main" style={{ display:"flex", flexWrap:"wrap", gap:4, flex:"1 1 auto" }}>
+        <nav aria-label="Main" className="mainnav" style={{ display:"flex", flexWrap:"wrap", gap:4, flex:"1 1 auto" }}>
           {NAV_AREAS.map(a => {
             const on = a.id === area;
             return <button key={a.id} type="button" className={on ? "" : "navbtn"} aria-current={on ? "page" : undefined} onClick={()=>onArea(a.id)} style={{ minHeight:40, padding:"0 14px", borderRadius:10, border:"none", cursor:"pointer", fontSize:14, fontFamily:"inherit", fontWeight:on ? 600 : 500, color:on ? C.rund : C.muted, background:on ? "var(--accent-soft)" : "transparent" }}>{a.label}</button>;
           })}
         </nav>
-        <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
-          <div title={syncError || ""} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:C.muted }}>
+        <div className="hdr-tools" style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+          <div title={syncError || ""} className="hdr-sync" style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:C.muted }}>
             <span style={{ width:8, height:8, borderRadius:"50%", background:syncError ? C.red : C.teal, boxShadow:"0 0 0 4px " + (syncError ? TINT.redBg : TINT.safeBg) }} />
             <span>{syncLabel}</span><HeaderClock />
           </div>
@@ -6028,6 +6267,9 @@ export default function App() {
   const setChargeLog = useCallback(nextValueOrUpdater => updateKey("cgb_chargeLog", nextValueOrUpdater), [updateKey]);
   const [weather, setWeather]           = useState(null);
   const lastChangeout = platformState.cgb_lastChangeout;
+  const storedChangeouts = platformState.cgb_changeouts;
+  const changeoutList = useMemo(()=>changeoutHistory(storedChangeouts, lastChangeout), [storedChangeouts, lastChangeout]);
+  const [changeoutOpen, setChangeoutOpen] = useState(false);
   const setLastChangeout = useCallback(nextValueOrUpdater => updateKey("cgb_lastChangeout", nextValueOrUpdater), [updateKey]);
   const downtimeHrs = platformState.cgb_downtimeHrs;
   const setDowntimeHrs = useCallback(nextValueOrUpdater => updateKey("cgb_downtimeHrs", nextValueOrUpdater), [updateKey]);
@@ -6133,6 +6375,22 @@ export default function App() {
   }
 
   const currentArea = NAV_AREAS.find(x => x.id === activeArea) || NAV_AREAS[0];
+  const recordChangeout = async form => {
+    const base = (storedChangeouts && storedChangeouts.length ? storedChangeouts : changeoutList.map(({ date, bed, source }) => ({ date, bed, source }))).filter(c => c.date !== form.date);
+    const entry = { date:form.date, batchRef:form.batchRef || "", massKg:form.massKg, fittedBy:form.fittedBy || "", notes:form.notes || "", source:"app", recordedBy:authState.user ? authState.user.username : "", recordedAt:new Date().toISOString() };
+    updateKey("cgb_changeouts", [...base, entry]);
+    setLastChangeout(form.date);
+    setDowntimeHrs(0);
+  };
+  const undoLastChangeout = () => {
+    const list = (storedChangeouts || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const last = list[list.length - 1];
+    if (!last || last.source !== "app") return;
+    if (!window.confirm("Undo the carbon change recorded for " + fmtDateShort(last.date) + "? The previous bed becomes current again.")) return;
+    const rest = list.slice(0, -1);
+    updateKey("cgb_changeouts", rest);
+    if (rest.length) setLastChangeout(rest[rest.length - 1].date);
+  };
   return (
     <div style={{ background:C.bg, color:C.ink, minHeight:"100vh", fontFamily:"Inter, system-ui, sans-serif" }}>
       <AppHeader area={activeArea} onArea={id=>navigateTo(id)} theme={theme} onToggleTheme={toggleTheme} user={authState.user} syncLabel={platformMeta.syncLabel} syncError={platformMeta.error} />
@@ -6143,8 +6401,9 @@ export default function App() {
             {platformMeta.error ? "Sync problem: " + platformMeta.error : ""}{platformMeta.error && isViewer ? " | " : ""}{isViewer ? "Read-only viewer mode" : ""}
           </div>
         ) : null}
-        {activeTab==="home"         && <HomeTab stackData={stackData} settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} ambient={appAmbientTemp} ambientSource={appAmbientSource} rh={appRH} creoDailyLog={platformState.cgb_creoDailyLog} creoDeliveries={platformState.cgb_creoDeliveries} platformMeta={platformMeta} onNavigate={navigateTo} creoModel={creoModel} creoBed={creoBed} opLoo={opLoo} />}
-        {activeTab==="seasonplan"   && <SeasonPlanTab settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} creoModel={creoModel} creoBed={creoBed} />}
+        {activeTab==="changes"      && <CarbonChangesTab history={changeoutList} stackData={stackData} canEdit={canEdit} onRecord={()=>setChangeoutOpen(true)} onUndoLast={undoLastChangeout} />}
+        {activeTab==="home"         && <HomeTab stackData={stackData} settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} ambient={appAmbientTemp} ambientSource={appAmbientSource} rh={appRH} creoDailyLog={platformState.cgb_creoDailyLog} creoDeliveries={platformState.cgb_creoDeliveries} platformMeta={platformMeta} onNavigate={navigateTo} creoModel={creoModel} creoBed={creoBed} opLoo={opLoo} canEdit={canEdit} onRecordChangeout={()=>setChangeoutOpen(true)} changeoutList={changeoutList} />}
+        {activeTab==="seasonplan"   && <SeasonPlanTab settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} creoModel={creoModel} creoBed={creoBed} opLoo={opLoo} onNavigate={navigateTo} />}
         {activeTab==="compliance"   && <ComplianceTab stackData={stackData} vocC={vocC} pahC={pahC} creoModel={creoModel} opLoo={opLoo} />}
         {activeTab==="dashboard"    && (
           <>
@@ -6168,8 +6427,9 @@ export default function App() {
         {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} />}
         {activeTab==="bat"          && <BATComplianceTab settings={settings} onChange={updateSetting} canEdit={canEdit} stackData={stackData} />}
         {activeTab==="modeldetails" && <ModelDetailsTab stackData={stackData} vocC={vocC} pahC={pahC} settings={settings} latestCarbonBatch={latestCarbonBatch} />}
-        {activeTab==="settings"     && <SettingsTab     settings={settings} onChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} platformMeta={platformMeta} onExportBackup={exportBackup} onImportBackup={importBackup} onResetPlatform={resetPlatform} onRunChargeImportScan={runChargeImportScan} authState={authState} onLogout={logout} onChangePassword={changePassword} onCreateUser={createUser} adminData={adminData} onDownloadDocument={downloadDocument} />}
+        {activeTab==="settings"     && <SettingsTab     onRecordChangeout={()=>setChangeoutOpen(true)} settings={settings} onChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} platformMeta={platformMeta} onExportBackup={exportBackup} onImportBackup={importBackup} onResetPlatform={resetPlatform} onRunChargeImportScan={runChargeImportScan} authState={authState} onLogout={logout} onChangePassword={changePassword} onCreateUser={createUser} adminData={adminData} onDownloadDocument={downloadDocument} />}
 
+        <ChangeoutDialog open={changeoutOpen} onClose={()=>setChangeoutOpen(false)} onSave={recordChangeout} lastChangeout={lastChangeout} userName={authState.user ? (authState.user.displayName || authState.user.username) : ""} />
         <footer style={{ marginTop:28, paddingTop:18, borderTop:`1px solid ${C.border}`, display:"flex", flexWrap:"wrap", justifyContent:"space-between", gap:10, fontSize:12, color:C.muted }}>
           <div>Calders &amp; Grandidge (Boston) Ltd - Permit EPR/A2/1 - BAT 51/52 (EU) 2020/2009 - For compliance planning only; does not replace MCERTS stack testing.</div>
           <div style={{ fontFamily:MONO }}>Model {MODEL_VERSION} - state v{platformMeta.version || 0} - synced {formatSyncStamp(platformMeta.updatedAt)}{lastSaved ? " - saved " + lastSaved : ""}</div>

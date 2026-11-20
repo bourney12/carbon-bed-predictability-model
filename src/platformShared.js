@@ -10,6 +10,7 @@ export const PERSISTED_STATE_KEYS = [
   "cgb_loggerLog",
   "cgb_creoDeliveries",
   "cgb_creoDailyLog",
+  "cgb_changeouts",
 ];
 
 export function createDefaultSettings() {
@@ -46,6 +47,7 @@ export function createDefaultPlatformState() {
     cgb_loggerLog: [],
     cgb_creoDeliveries: [],
     cgb_creoDailyLog: [],
+    cgb_changeouts: [],
     cgb_settings: createDefaultSettings(),
   };
 }
