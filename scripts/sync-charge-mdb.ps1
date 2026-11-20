@@ -3,8 +3,26 @@ param(
   [string]$ServiceUrl = "https://carbon-bed-predictability-model.onrender.com",
   [string]$ImportApiKey = $env:CARBON_IMPORT_API_KEY,
   [int]$PollSeconds = 60,
-  [switch]$Once
+  [switch]$Once,
+  # Optional: DPAPI-encrypted key file written by install-charge-sync-task.ps1
+  # (readable only by the Windows user who created it, on this PC).
+  [string]$KeyFile = "",
+  # Optional: append all output to this log file (used by the scheduled task).
+  [string]$LogFile = ""
 )
+
+if ($LogFile) {
+  $logDir = Split-Path -Parent $LogFile
+  if ($logDir -and !(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+  # Keep the log small: roll over at 1 MB.
+  if ((Test-Path $LogFile) -and (Get-Item $LogFile).Length -gt 1MB) { Move-Item $LogFile ($LogFile + ".old") -Force }
+  Start-Transcript -Path $LogFile -Append | Out-Null
+}
+
+if ([string]::IsNullOrWhiteSpace($ImportApiKey) -and $KeyFile -and (Test-Path $KeyFile)) {
+  $secure = Get-Content $KeyFile | ConvertTo-SecureString
+  $ImportApiKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
+}
 
 # Charge data sync: Access ChargeDB.mdb -> Render /api/imports/charges/mdb-sync
 #
@@ -100,8 +118,16 @@ if (!(Test-Path -LiteralPath $DatabasePath)) {
 }
 
 if ($Once) {
-  Invoke-ChargeSync -Path $DatabasePath -Url $ServiceUrl -ApiKey $ImportApiKey
-  return
+  try {
+    Invoke-ChargeSync -Path $DatabasePath -Url $ServiceUrl -ApiKey $ImportApiKey
+  }
+  catch {
+    Write-Warning ("[{0}] Sync failed: {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $_)
+    if ($LogFile) { Stop-Transcript | Out-Null }
+    exit 1
+  }
+  if ($LogFile) { Stop-Transcript | Out-Null }
+  exit 0
 }
 
 $lastWrite = [datetime]::MinValue
