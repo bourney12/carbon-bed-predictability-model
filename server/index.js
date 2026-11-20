@@ -319,6 +319,13 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, next);
     }
 
+    if (url.pathname === "/api/imports/creosote/xlsx-sync" && req.method === "POST") {
+      if (!hasImportApiAccess(req)) return sendJson(res, 401, { error: "Valid import API key required" });
+      const body = await readJsonBody(req);
+      const result = await store.importCreosoteLog(body, null, "creosote-xlsx-sync");
+      return sendJson(res, 200, result);
+    }
+
     if (url.pathname === "/api/extract/stack-test" && req.method === "POST") {
       assertRole(user, ["admin", "operator"]);
       const body = await readJsonBody(req);

@@ -119,3 +119,12 @@ Before calling the deployment live:
 - Keep `work/platform-data/` on persistent storage, not ephemeral disk.
 - The server-side AI extraction depends on Anthropic being reachable from the deployment host.
 - v1.9.0 seed data covers P1-P14 (to JOB-3146, 24 Sep 2026). P9-P14 active hours are estimated at 21.7 hrs/day and should be reconciled against the charge log.
+
+## Creosote log sync (v1.10.0)
+
+The site's `Creosote Tank and Flash Point Log.xlsx` (SharePoint) feeds the CoA Data tab.
+
+- Endpoint: `POST /api/imports/creosote/xlsx-sync`, header `X-Import-Api-Key` (same `CARBON_IMPORT_API_KEY` as the charge sync).
+- PC side: `scripts/sync-creosote-xlsx.ps1` reads the **Deliveries** and **Daily Log** tabs straight from the .xlsx (no Excel needed; columns matched by header text) and posts them. `scripts/install-creosote-sync-task.ps1` registers a 15-minute scheduled task that only posts when the workbook has changed.
+- The workbook must be synced to the PC by OneDrive ("Add shortcut to My files", then "Always keep on this device").
+- On each sync, deliveries and tank readings from `SinceDate` (default 2024-01-01) replace the platform copy for that range, and every delivery with a cert number is upserted into `cgb_coaData` by cert number (the workbook is the master record). New state keys: `cgb_creoDeliveries`, `cgb_creoDailyLog`.

@@ -125,6 +125,69 @@ function parseChargeCsvText(text, importTag) {
   return { ready, errors };
 }
 
+
+// ---- Creosote Tank and Flash Point Log sync helpers ----
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+function isoDate(value) {
+  const text = String(value == null ? "" : value).trim();
+  return ISO_DATE.test(text) ? text : "";
+}
+function num(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(String(value).replace(/[<>,\s]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+function str(value, max = 200) {
+  return value === null || value === undefined ? "" : String(value).trim().slice(0, max);
+}
+function normalizeCreoDelivery(raw) {
+  const date = isoDate(raw && raw.date);
+  if (!date) return null;
+  return {
+    date,
+    intoTankDate: isoDate(raw.intoTankDate) || "",
+    stockDate: isoDate(raw.stockDate) || date,
+    status: str(raw.status, 40),
+    supplier: str(raw.supplier, 60),
+    type: str(raw.type, 20),
+    qtyKg: num(raw.qtyKg),
+    certNo: str(raw.certNo, 40),
+    flashpoint: num(raw.flashpoint),
+    crystallisation: num(raw.crystallisation),
+    tarAcid: num(raw.tarAcid),
+    tolueneInsol: num(raw.tolueneInsol),
+    naphthalene: num(raw.naphthalene),
+    bap: num(raw.bap),
+    water: num(raw.water),
+    density: num(raw.density),
+    dist235: num(raw.dist235),
+    dist300: num(raw.dist300),
+    dist355: num(raw.dist355),
+    orderNo: str(raw.orderNo, 40),
+    transport: str(raw.transport, 60),
+    outOfSpec: str(raw.outOfSpec, 200),
+  };
+}
+function normalizeCreoReading(raw) {
+  const date = isoDate(raw && raw.date);
+  if (!date) return null;
+  return {
+    date,
+    store1Kg: num(raw.store1Kg),
+    store2Kg: num(raw.store2Kg),
+    work1Kg: num(raw.work1Kg),
+    work2Kg: num(raw.work2Kg),
+    totalKg: num(raw.totalKg),
+    correctedKg: num(raw.correctedKg),
+    deliveredKg: num(raw.deliveredKg),
+    usageKg: num(raw.usageKg),
+    workingDays: num(raw.workingDays),
+    usagePerDayKg: num(raw.usagePerDayKg),
+    ambientC: num(raw.ambientC),
+    idleDays: num(raw.idleDays),
+  };
+}
+
 function defaultEnvelope() {
   return {
     version: 1,
@@ -137,6 +200,14 @@ function defaultEnvelope() {
         lastImportedAt: null,
         lastFile: null,
         lastSummary: "No automated charge imports yet.",
+        lastError: "",
+      },
+      creosote: {
+        lastRunAt: null,
+        lastImportedAt: null,
+        lastFile: null,
+        lastFileModifiedAt: null,
+        lastSummary: "No creosote log syncs yet.",
         lastError: "",
       },
     },
@@ -160,6 +231,10 @@ function sanitizeEnvelope(rawEnvelope) {
       charges: {
         ...base.imports.charges,
         ...(envelope.imports && envelope.imports.charges ? envelope.imports.charges : {}),
+      },
+      creosote: {
+        ...base.imports.creosote,
+        ...(envelope.imports && envelope.imports.creosote ? envelope.imports.creosote : {}),
       },
     },
     security: {
@@ -654,6 +729,102 @@ export class PlatformStateStore {
     });
     await this.persist(this.envelope.state, source);
     return this.getPublicState();
+  }
+
+  // Creosote Tank and Flash Point Log (SharePoint workbook) -> platform state.
+  // The workbook is the site master record, so on each sync:
+  //  - deliveries and daily tank readings from payload.sinceDate onward replace what the
+  //    platform held for that range (earlier history is kept);
+  //  - every delivery with a cert number is upserted into the CoA Data tab by cert number.
+  async importCreosoteLog(payload, actor = null, source = "creosote-xlsx-sync") {
+    const info = this.envelope.imports.creosote;
+    info.lastRunAt = new Date().toISOString();
+    const body = payload && typeof payload === "object" ? payload : {};
+    const deliveries = (Array.isArray(body.deliveries) ? body.deliveries : []).map(normalizeCreoDelivery).filter(Boolean);
+    const readings = (Array.isArray(body.dailyLog) ? body.dailyLog : []).map(normalizeCreoReading).filter(Boolean);
+    const rejected = (Array.isArray(body.deliveries) ? body.deliveries.length : 0) - deliveries.length
+      + (Array.isArray(body.dailyLog) ? body.dailyLog.length : 0) - readings.length;
+    if (deliveries.length === 0 && readings.length === 0) {
+      info.lastError = "Sync received no valid deliveries or tank readings.";
+      await this.flush("creosote-sync-empty");
+      throw new Error(info.lastError);
+    }
+    const allDates = [...deliveries, ...readings].map(row => row.date).sort();
+    const since = isoDate(body.sinceDate) || allDates[0];
+    for (let i = deliveries.length - 1; i >= 0; i -= 1) if (deliveries[i].date < since) deliveries.splice(i, 1);
+    for (let i = readings.length - 1; i >= 0; i -= 1) if (readings[i].date < since) readings.splice(i, 1);
+
+    const state = this.envelope.state;
+    const keepDeliveries = (state.cgb_creoDeliveries || []).filter(row => String(row.date || "") < since);
+    const nextDeliveries = [...keepDeliveries, ...deliveries.filter(row => row.date >= since)]
+      .sort((a, b) => a.date.localeCompare(b.date) || a.certNo.localeCompare(b.certNo));
+    const readingMap = new Map();
+    readings.filter(row => row.date >= since).forEach(row => readingMap.set(row.date, row));
+    const keepReadings = (state.cgb_creoDailyLog || []).filter(row => String(row.date || "") < since);
+    const nextReadings = [...keepReadings, ...readingMap.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+    // CoA upsert by cert number
+    const coa = Array.isArray(state.cgb_coaData) ? state.cgb_coaData.slice() : [];
+    const indexByCert = new Map();
+    coa.forEach((row, i) => { if (row && row.certNo) indexByCert.set(String(row.certNo).trim().toUpperCase(), i); });
+    let coaInserted = 0;
+    let coaUpdated = 0;
+    deliveries.filter(row => row.certNo).forEach(row => {
+      const record = {
+        date: row.date,
+        certNo: row.certNo,
+        flashpoint: row.flashpoint,
+        crystallisation: row.crystallisation,
+        naphthalene: row.naphthalene,
+        bap: row.bap,
+        supplier: row.supplier,
+        type: row.type,
+        qtyKg: row.qtyKg,
+        density: row.density,
+        tarAcid: row.tarAcid,
+        tolueneInsol: row.tolueneInsol,
+        water: row.water,
+        dist235: row.dist235,
+        dist300: row.dist300,
+        dist355: row.dist355,
+        status: row.status,
+        outOfSpec: row.outOfSpec,
+        source: "creosote-log",
+      };
+      const key = row.certNo.toUpperCase();
+      if (indexByCert.has(key)) {
+        const i = indexByCert.get(key);
+        const merged = { ...coa[i], ...record };
+        if (JSON.stringify(merged) !== JSON.stringify(coa[i])) { coa[i] = merged; coaUpdated += 1; }
+      } else {
+        indexByCert.set(key, coa.length);
+        coa.push(record);
+        coaInserted += 1;
+      }
+    });
+    coa.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+
+    const lastReading = nextReadings[nextReadings.length - 1];
+    info.lastImportedAt = new Date().toISOString();
+    info.lastFile = str(body.fileName, 200) || source;
+    info.lastFileModifiedAt = str(body.fileModifiedAt, 40) || null;
+    info.sinceDate = since;
+    info.deliveryCount = nextDeliveries.length;
+    info.readingCount = nextReadings.length;
+    info.latestReadingDate = lastReading ? lastReading.date : null;
+    info.lastError = rejected > 0 ? `Skipped ${rejected} rows without a valid date.` : "";
+    info.lastSummary = `Creosote log sync: ${deliveries.length} deliveries and ${readings.length} tank readings from ${since}; CoA ${coaInserted} added, ${coaUpdated} updated.`;
+    this.addAudit("creosote-log-sync", actor, {
+      source,
+      since,
+      deliveries: deliveries.length,
+      readings: readings.length,
+      coaInserted,
+      coaUpdated,
+      rejected,
+    });
+    await this.persist({ ...state, cgb_creoDeliveries: nextDeliveries, cgb_creoDailyLog: nextReadings, cgb_coaData: coa }, source);
+    return { summary: info.lastSummary, coaInserted, coaUpdated, deliveries: deliveries.length, readings: readings.length, since };
   }
 
   async archiveImportedFile(filePath, fileName, suffix) {

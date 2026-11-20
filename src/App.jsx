@@ -2526,7 +2526,112 @@ function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchi
 // ============================================================
 // CoA DATA TAB
 // ============================================================
-function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchiveDocument, canArchiveDocuments, canEdit }) {
+// ---- Creosote supply and usage (synced from the site's Creosote Tank and Flash Point Log) ----
+function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
+  const [months, setMonths] = useState(12);
+  const rows = useMemo(() => (dailyLog || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))), [dailyLog]);
+  const dels = useMemo(() => (deliveries || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))), [deliveries]);
+  const latest = rows.length ? rows[rows.length-1] : null;
+  const lastDelivery = dels.length ? dels[dels.length-1] : null;
+
+  const monthly = useMemo(() => {
+    const map = new Map();
+    const bucket = key => {
+      if (!map.has(key)) map.set(key, { month:key, usageKg:0, deliveredKg:0, loads:0, workingDays:0, fpSum:0, fpN:0 });
+      return map.get(key);
+    };
+    rows.forEach(r => {
+      const b = bucket(String(r.date).slice(0,7));
+      if (r.usageKg != null && r.usageKg > 0) b.usageKg += r.usageKg;
+      if (r.workingDays != null && r.workingDays > 0) b.workingDays += r.workingDays;
+    });
+    dels.forEach(d => {
+      const b = bucket(String(d.stockDate || d.date).slice(0,7));
+      if (d.qtyKg != null) b.deliveredKg += d.qtyKg;
+      b.loads += 1;
+      if (d.flashpoint != null) { b.fpSum += d.flashpoint; b.fpN += 1; }
+    });
+    return [...map.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(b => ({
+      month: b.month,
+      label: b.month.slice(2).replace("-", "/"),
+      usageT: Math.round(b.usageKg / 100) / 10,
+      deliveredT: Math.round(b.deliveredKg / 100) / 10,
+      loads: b.loads,
+      perDayT: b.workingDays > 0 ? Math.round(b.usageKg / b.workingDays / 100) / 10 : null,
+      avgFP: b.fpN ? Math.round(b.fpSum / b.fpN * 10) / 10 : null,
+    }));
+  }, [rows, dels]);
+  const shown = months > 0 ? monthly.slice(-months) : monthly;
+
+  const last30 = useMemo(() => {
+    if (!latest) return null;
+    const cutoff = new Date(new Date(latest.date + "T00:00:00Z").getTime() - 30 * 86400000).toISOString().slice(0,10);
+    let use = 0, days = 0;
+    rows.forEach(r => { if (r.date > cutoff) { if (r.usageKg > 0) use += r.usageKg; if (r.workingDays > 0) days += r.workingDays; } });
+    return { use, perDay: days > 0 ? use / days : null };
+  }, [rows, latest]);
+
+  if (!rows.length && !dels.length) {
+    return (
+      <Card>
+        <SectionTitle>Creosote Supply and Usage</SectionTitle>
+        <div style={{ fontSize:12, color:C.muted }}>
+          No data synced yet. Deliveries and SCADA tank readings arrive from the site's Creosote Tank and Flash Point Log
+          via the creosote sync task on the site PC (scripts/install-creosote-sync-task.ps1).
+        </div>
+      </Card>
+    );
+  }
+
+  const fmtT = kg => kg == null ? "--" : (kg / 1000).toFixed(1);
+  return (
+    <Card>
+      <SectionTitle>Creosote Supply and Usage</SectionTitle>
+      <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }}>
+        <StatPill label="Tank stock" value={latest ? fmtT(latest.totalKg) : "--"} unit="t" sub={latest ? "SCADA " + latest.date + " (4 tanks)" : ""} />
+        <StatPill label="Usage, last 30 days" value={last30 ? fmtT(last30.use) : "--"} unit="t"
+          sub={last30 && last30.perDay != null ? fmtT(last30.perDay) + " t per working day" : ""} color={C.blue} />
+        <StatPill label="Last delivery" value={lastDelivery ? fmtT(lastDelivery.qtyKg) : "--"} unit="t"
+          sub={lastDelivery ? lastDelivery.date + " " + (lastDelivery.certNo || "") + (lastDelivery.flashpoint != null ? ", FP " + lastDelivery.flashpoint + " C" : "") : ""}
+          color={lastDelivery && lastDelivery.flashpoint != null && lastDelivery.flashpoint < 140 ? C.red : C.teal} />
+        <StatPill label="Ambient at reading" value={latest && latest.ambientC != null ? latest.ambientC.toFixed(1) : "--"} unit="C" color={C.muted} sub="From the daily SCADA print" />
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+        <div style={{ fontSize:11, color:C.muted }}>Monthly usage (from tank deltas) against deliveries, with mean delivered flash point.</div>
+        <div style={{ display:"flex", gap:4 }}>
+          {[[6,"6m"],[12,"12m"],[24,"24m"],[0,"All"]].map(([m,l]) => (
+            <button key={l} onClick={()=>setMonths(m)} style={{ fontSize:10, padding:"3px 8px", border:"1px solid " + C.border, background:months===m?C.rund:C.surface, color:months===m?"#fff":C.ink, cursor:"pointer", borderRadius:2 }}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ width:"100%", height:260, marginTop:6 }}>
+        <ResponsiveContainer>
+          <ComposedChart data={shown} margin={{ top:8, right:16, bottom:4, left:0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+            <XAxis dataKey="label" tick={{ fontSize:10, fill:C.muted }} />
+            <YAxis yAxisId="t" tick={{ fontSize:10, fill:C.muted }} label={{ value:"tonnes", angle:-90, position:"insideLeft", fontSize:10, fill:C.muted }} />
+            <YAxis yAxisId="fp" orientation="right" domain={[130, 170]} tick={{ fontSize:10, fill:C.muted }} label={{ value:"FP C", angle:90, position:"insideRight", fontSize:10, fill:C.muted }} />
+            <Tooltip contentStyle={{ fontSize:11 }} />
+            <Legend wrapperStyle={{ fontSize:11 }} />
+            <Bar yAxisId="t" dataKey="usageT" name="Used (t)" fill={C.blue} />
+            <Bar yAxisId="t" dataKey="deliveredT" name="Delivered (t)" fill={C.borderGreen} />
+            <Line yAxisId="fp" dataKey="avgFP" name="Mean FP (C)" stroke={C.amber} dot={{ r:2 }} connectNulls />
+            <ReferenceLine yAxisId="fp" y={140} stroke={C.red} strokeDasharray="4 3" />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={{ fontSize:10, color:C.muted, marginTop:6 }}>
+        {importStatus && importStatus.lastSummary ? importStatus.lastSummary : "No sync status."}
+        {importStatus && importStatus.lastImportedAt ? " Last sync " + String(importStatus.lastImportedAt).slice(0,16).replace("T"," ") + " UTC." : ""}
+        {importStatus && importStatus.lastError ? " Note: " + importStatus.lastError : ""}
+        {" "}Source: Creosote Tank and Flash Point Log (Deliveries and Daily Log tabs). The workbook is the master record; edits made there replace the synced range here.
+      </div>
+    </Card>
+  );
+}
+
+function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchiveDocument, canArchiveDocuments, canEdit, creoDeliveries, creoDailyLog, creoImportStatus }) {
   const [form, setForm] = useState({ date:"", certNo:"", flashpoint:"", crystallisation:"", naphthalene:"", bap:"" });
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState("");
@@ -2845,6 +2950,8 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
         <Btn onClick={()=>{if(!form.date||!form.certNo)return;onAdd({...form,flashpoint:parseFloat(form.flashpoint)||null,crystallisation:parseFloat(form.crystallisation)||null,naphthalene:parseFloat(form.naphthalene)||null,bap:parseFloat(form.bap)||null});setForm({date:"",certNo:"",flashpoint:"",crystallisation:"",naphthalene:"",bap:""});}} variant="rund">Add Entry</Btn>
       </Card>
 
+      <CreosoteSupplyCard deliveries={creoDeliveries} dailyLog={creoDailyLog} importStatus={creoImportStatus} />
+
       {coaData.length > 0 && (
         <Card>
           <SectionTitle>CoA Records ({coaData.length})</SectionTitle>
@@ -2852,20 +2959,22 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
               <thead>
                 <tr style={{ borderBottom:`2px solid ${C.border}` }}>
-                  {["CoA Date","Cert No","Flashpoint","Crystallisation","Naph %","B(a)P ppm"].map(h=>(
+                  {["Date","Cert No","Qty (t)","Flashpoint","Crystallisation","Naph %","B(a)P ppm","Density"].map(h=>(
                     <th key={h} style={{ textAlign:"left", padding:"6px 10px", fontSize:9, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {[...coaData].reverse().slice(0,25).map((row,i)=>(
+                {[...coaData].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))).slice(0,25).map((row,i)=>(
                   <tr key={i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?C.ivory:C.surface }}>
                     <td style={{ padding:"6px 10px", fontFamily:MONO }}>{row.date}</td>
                     <td style={{ padding:"6px 10px", fontFamily:MONO }}>{row.certNo}</td>
+                    <td style={{ padding:"6px 10px", fontFamily:MONO }}>{row.qtyKg!=null?(row.qtyKg/1000).toFixed(1):"--"}</td>
                     <td style={{ padding:"6px 10px", fontFamily:MONO, color:row.flashpoint<140?C.red:C.ink }}>{row.flashpoint?row.flashpoint.toFixed(1):"--"}</td>
                     <td style={{ padding:"6px 10px", fontFamily:MONO }}>{row.crystallisation?row.crystallisation.toFixed(1):"--"}</td>
                     <td style={{ padding:"6px 10px", fontFamily:MONO }}>{row.naphthalene?row.naphthalene.toFixed(2):"--"}</td>
                     <td style={{ padding:"6px 10px", fontFamily:MONO }}>{row.bap?row.bap.toFixed(2):"--"}</td>
+                    <td style={{ padding:"6px 10px", fontFamily:MONO }}>{row.density!=null?Number(row.density).toFixed(3):"--"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -5007,7 +5116,7 @@ export default function App() {
         {activeTab==="stack"        && <StackTestsTab   stackData={stackData} onAdd={e=>setStackDataExtra(d=>[...d,e])} settings={settings} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} />}
         {activeTab==="thermal"      && <ThermalAnalysisTab thermalLog={thermalLog} thermalStats={thermalStats} onAddThermalEntry={entry=>setThermalLog(list=>[...list, entry])} onDeleteThermalEntry={id=>setThermalLog(list=>list.filter(entry=>entry.id!==id))} loggerLog={loggerLog} onImportLoggerData={rows=>setLoggerLog(list=>[...list, ...rows])} onClearLoggerData={()=>setLoggerLog([])} onUpdateCorrectionFactor={newDelta=>updateSetting("stackTempCorrectionC", newDelta)} settings={settings} onChangeSetting={updateSetting} canEdit={canEdit} />}
-        {activeTab==="coa"          && <CoATab coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
+        {activeTab==="coa"          && <CoATab creoDeliveries={platformState.cgb_creoDeliveries} creoDailyLog={platformState.cgb_creoDailyLog} creoImportStatus={platformMeta && platformMeta.imports ? platformMeta.imports.creosote : null} coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="carbonquality" && <CarbonQualityTab carbonCoaData={carbonCoaData} onAdd={entry=>setCarbonCoaData(d=>[...d, entry])} onDelete={id=>setCarbonCoaData(d=>d.filter(e=>e.id!==id))} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} settings={settings} />}
         {activeTab==="documents"    && <DocumentLibraryTab adminData={adminData} isAdmin={isAdmin} onDownloadDocument={downloadDocument} />}
         {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} />}

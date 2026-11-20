@@ -8,6 +8,8 @@ export const PERSISTED_STATE_KEYS = [
   "cgb_downtimeHrs",
   "cgb_thermalLog",
   "cgb_loggerLog",
+  "cgb_creoDeliveries",
+  "cgb_creoDailyLog",
 ];
 
 export function createDefaultSettings() {
@@ -41,6 +43,8 @@ export function createDefaultPlatformState() {
     cgb_downtimeHrs: 0,
     cgb_thermalLog: [],
     cgb_loggerLog: [],
+    cgb_creoDeliveries: [],
+    cgb_creoDailyLog: [],
     cgb_settings: createDefaultSettings(),
   };
 }
