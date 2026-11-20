@@ -62,10 +62,14 @@ if ((Test-Path $keyFile) -and ((Read-Host "An import key is already stored. Repl
 $dbPath = $DatabasePath
 if ($dbPath -match '^([A-Za-z]):\\') {
   $letter = $Matches[1].ToUpper()
-  $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${letter}:'" -ErrorAction SilentlyContinue
-  if ($disk -and $disk.DriveType -eq 4 -and $disk.ProviderName) {
-    $dbPath = $disk.ProviderName.TrimEnd('\') + $dbPath.Substring(2)
+  # Get-PSDrive is used rather than Get-CimInstance Win32_LogicalDisk, which can hang
+  # indefinitely on DFS-mapped drives (seen on site, Nov 2026).
+  $drive = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction SilentlyContinue
+  if ($drive -and $drive.DisplayRoot -and $drive.DisplayRoot.StartsWith('\\')) {
+    $dbPath = $drive.DisplayRoot.TrimEnd('\') + $dbPath.Substring(2)
     Write-Host "Mapped drive ${letter}: resolved to network path: $dbPath"
+  } else {
+    Write-Warning "Could not resolve ${letter}: to a network path. If the task fails, re-run with -DatabasePath '\\server\share\...'."
   }
 }
 if (!(Test-Path -LiteralPath $dbPath)) { throw "Charge database not found at: $dbPath" }
