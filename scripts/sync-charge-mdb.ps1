@@ -62,20 +62,28 @@ function Get-ChargeRowsFromMdb {
   # (32-bit only, reads .mdb files - no install needed; run from SysWOW64 PowerShell).
   $conn = $null
   $errors = @()
+  # Jet 4.0 rejects the combined "Read|Share Deny None" mode string (DB_E_ERRORSOCCURRED),
+  # so each provider is tried with progressively simpler open modes. All are non-exclusive
+  # opens, so the plant system can keep writing to the database.
   foreach ($provider in @("Microsoft.ACE.OLEDB.16.0", "Microsoft.ACE.OLEDB.12.0", "Microsoft.Jet.OLEDB.4.0")) {
-    $connString = "Provider=$provider;Data Source=$Path;Mode=Read|Share Deny None;Persist Security Info=False;"
-    $candidate = New-Object System.Data.OleDb.OleDbConnection($connString)
-    try {
-      $candidate.Open()
-      $conn = $candidate
-      Write-Host ("Opened MDB with {0} ({1}-bit PowerShell)." -f $provider, ([IntPtr]::Size * 8))
-      break
+    foreach ($mode in @("Mode=Read|Share Deny None;", "Mode=Share Deny None;", "Mode=Read;", "")) {
+      $connString = "Provider=$provider;Data Source=$Path;$mode"
+      $candidate = New-Object System.Data.OleDb.OleDbConnection($connString)
+      try {
+        $candidate.Open()
+        $conn = $candidate
+        Write-Host ("Opened MDB with {0} [{1}] ({2}-bit PowerShell)." -f $provider, $(if ($mode) { $mode.TrimEnd(';') } else { "default mode" }), ([IntPtr]::Size * 8))
+        break
+      }
+      catch {
+        $msg = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+        $errors += ("{0} [{1}]: {2}" -f $provider, $mode.TrimEnd(';'), $msg)
+        $candidate.Dispose()
+        # Provider not installed: no point trying other modes.
+        if ($msg -match "not registered") { break }
+      }
     }
-    catch {
-      $msg = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
-      $errors += ("{0}: {1}" -f $provider, $msg)
-      $candidate.Dispose()
-    }
+    if ($null -ne $conn) { break }
   }
   if ($null -eq $conn) {
     throw ("No Access/Jet driver could open the MDB in this {0}-bit PowerShell. Tried: {1}" -f ([IntPtr]::Size * 8), ($errors -join " | "))
