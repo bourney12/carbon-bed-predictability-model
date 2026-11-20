@@ -118,4 +118,4 @@ Before calling the deployment live:
 - `work/platform-data/live-state.json` is only a legacy migration source if present.
 - Keep `work/platform-data/` on persistent storage, not ephemeral disk.
 - The server-side AI extraction depends on Anthropic being reachable from the deployment host.
-- P8 PAH remains the highest-value missing calibration input.
+- v1.9.0 seed data covers P1-P14 (to JOB-3146, 24 Sep 2026). P9-P14 active hours are estimated at 21.7 hrs/day and should be reconciled against the charge log.

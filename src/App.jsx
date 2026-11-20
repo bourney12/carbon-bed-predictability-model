@@ -43,8 +43,8 @@ const TINT = {
   blueText: "#0d3d6e",
 };
 const MONO = "'Consolas', 'Courier New', monospace";
-const MODEL_VERSION = "v1.8.0";
-const MODEL_BUILD_DATE = "2026-06-19";
+const MODEL_VERSION = "v1.9.0";
+const MODEL_BUILD_DATE = "2026-11-20";
 
 // ============================================================
 // CONSTANTS
@@ -226,21 +226,22 @@ function effectiveHoursForStackRecord(record) {
 // VOC model defaults - Ridge L2, all 8 periods, ln(rawHrs) + ambientTemp
 // Calibrated at nf=0.53. WJ fraction effect applied only to safeWindowHours output
 // (not to predictVOC input) so coefficients remain consistent with calibration data.
-// R2=0.47 - weak fit reflects small dataset and P1-P3 same-carbon confound.
-// Uncertainty band x1.85 (1SD in log space).
-const D_VOC_A =  0.8039;   // ln(rawActiveHrs) coefficient
-const D_VOC_B =  0.0960;   // avgTemp (ambient) coefficient
-const D_VOC_C = -3.3914;   // intercept
-const VOC_RMSE_LOG = 0.6178; // RMSE in log space -> x1.85 uncertainty band
+// v1.9.0 refit on 11 independent periods (P4-P14): R2=0.771, LOO CV R2=0.463.
+// Fallback values only - live coefficients are recalculated by calibrateVOC().
+const D_VOC_A =  1.699;    // ln(rawActiveHrs) coefficient
+const D_VOC_B =  0.109;    // avgTemp (ambient) coefficient
+const D_VOC_C = -9.917;    // intercept
+const VOC_RMSE_LOG = 1.079; // RMSE in log space -> x1.85 uncertainty band
 
 // PAH model defaults - bivariate: stackTemp (dominant) + ln(activeHrs)
-// Fresh-carbon periods only (P4,P5,P6,P7): R2=0.9994, hours coeff POSITIVE (physically valid)
+// v1.9.0 refit on fresh-carbon periods P4-P14 (n=11): R2=0.429, hours coeff positive.
+// The previous 4-point fit (R2=0.9994) was over-fitted; 2026 data shows wider scatter.
 // ln(PAH) = D_PAH_A*stackTemp + D_PAH_B*ln(activeHrs) + D_PAH_C
 // ELV breach governed primarily by temperature; hours provide a real secondary ageing signal.
-const D_PAH_A =  0.2697;   // stackTemp coefficient (dominant driver)
-const D_PAH_B =  0.0093;   // ln(activeHrs) coefficient (positive = conservative with age)
-const D_PAH_C =  1.0686;   // intercept
-const PAH_RMSE_LOG = 0.0420; // RMSE from fresh-carbon bivariate fit
+const D_PAH_A =  0.171;    // stackTemp coefficient (dominant driver)
+const D_PAH_B =  0.705;    // ln(activeHrs) coefficient (positive = conservative with age)
+const D_PAH_C = -2.538;    // intercept
+const PAH_RMSE_LOG = 1.260; // RMSE from fresh-carbon bivariate fit
 // Stack temp linear regression: stackTemp = STACK_TEMP_A + STACK_TEMP_B * avgTemp
 // Derived from MCERTS data: P1, P3, P4, P5, P6, P7, P8.
 // P2 excluded: flowAnomalous === true. Anomalous low-flow condition
@@ -252,8 +253,19 @@ const STACK_TEMP_A = 13.506;
 const STACK_TEMP_B =  0.685;
 
 // ============================================================
-// SEED DATA P1-P8
+// SEED DATA P1-P14
 // ============================================================
+// v1.9.0 (2026-11-20): P8 updated to certified JOB-2865 (VOC 105, PAH 295,
+// stack 24.8C). P9-P14 added from Cura Terrae/Envirocare reports JOB-2963,
+// JOB-3036, JOB-3082, JOB-3083 (R1/R2) and JOB-3146.
+// Changeouts: Bed 6 on 2026-06-05; Bed 7 on 2026-08-25 (inferred from the
+// JOB-3083 R1->R2 step change); Bed 8 on 2026-11-05.
+// P9-P14 activeHrs are ESTIMATED as bed days x 21.7 hrs/day (rate measured
+// over P8: 1,494.9 hrs / 69 days) pending charge-log reconciliation.
+// avgTemp/avgRH are Open-Meteo archive daily means, Boston (52.98N, 0.02W),
+// from changeout to test date. measuredFlow_m3hr is informational only and
+// is deliberately not fed to calcEffectiveHours, keeping P8-P14 on the same
+// effective-hours basis as P1-P7.
 const INITIAL_STACK_DATA = [
   { period:"P1", date:"2025-01-16", periodStart:"2024-09-01", periodEnd:"2025-01-16", activeHrs:320,  avgTemp:8.0,  stackTemp:18.0, avgRH:82, voc:10.6, pah:524.9,  charges:55,  p1Charges:32, p2Charges:23,  sameCarbon:true,  dropletFalloutObserved:null },
   { period:"P2", date:"2025-03-12", periodStart:"2024-09-01", periodEnd:"2025-03-12", activeHrs:780,  avgTemp:12.0, stackTemp:22.0, avgRH:78, voc:45.0, pah:865.0,  charges:133, p1Charges:78, p2Charges:55,  sameCarbon:true, dropletFalloutObserved:null,
@@ -265,7 +277,16 @@ const INITIAL_STACK_DATA = [
   { period:"P5", date:"2025-11-06", periodStart:"2025-08-01", periodEnd:"2025-11-06", activeHrs:420,  avgTemp:9.5,  stackTemp:19.5, avgRH:80, voc:8.4,  pah:586.0,  charges:72,  p1Charges:42, p2Charges:30,  sameCarbon:false, dropletFalloutObserved:null },
   { period:"P6", date:"2025-12-18", periodStart:"2025-08-01", periodEnd:"2025-12-18", activeHrs:890,  avgTemp:10.2, stackTemp:20.0, avgRH:83, voc:28.0, pah:712.0,  charges:152, p1Charges:89, p2Charges:63,  sameCarbon:false, dropletFalloutObserved:null },
   { period:"P7", date:"2026-03-14", periodStart:"2026-01-12", periodEnd:"2026-03-14", activeHrs:1387, avgTemp:6.1,  stackTemp:17.5, avgRH:85, voc:5.9,  pah:340.0,  charges:237, p1Charges:138, p2Charges:99, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P8", date:"2026-06-04", periodStart:"2026-03-20", periodEnd:"2026-06-04", activeHrs:1495, avgTemp:11.6, stackTemp:23.0, avgRH:78, voc:63.9, pah:null,   charges:241, p1Charges:141, p2Charges:100,sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P8", report:"JOB-2865", date:"2026-06-02", periodStart:"2026-03-20", periodEnd:"2026-06-02", bedId:"Bed 5", activeHrs:1495, avgTemp:11.6, stackTemp:24.8, avgRH:78, voc:105, pah:295, charges:241, p1Charges:141, p2Charges:100, measuredFlow_m3hr:9884, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P9", report:"JOB-2963", date:"2026-07-14", periodStart:"2026-06-05", periodEnd:"2026-07-14", bedId:"Bed 6", bedDay:39, activeHrs:846, activeHrsEstimated:true, avgTemp:19.0, stackTemp:25.3, avgRH:69, voc:44.6, pah:144, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:3589, sameCarbon:false, dropletFalloutObserved:null,
+    flowAnomalous:true,
+    excludeFromFlowCalcs:true,
+    anomalyNote:"Stack discharge flow 3,589 m3/hr on test day vs ~9,000-10,000 m3/hr at P8 and P10-P14. Same pattern as P2. Cause not identified; queried with Cura Terrae. Excluded from flow-dependent calculations. Retained in VOC and PAH regression with this flag." },
+  { period:"P10", report:"JOB-3036", date:"2026-07-29", periodStart:"2026-06-05", periodEnd:"2026-07-29", bedId:"Bed 6", bedDay:54, activeHrs:1172, activeHrsEstimated:true, avgTemp:18.9, stackTemp:33.0, avgRH:68, voc:138, pah:2116, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9464, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P11", report:"JOB-3082", date:"2026-08-13", periodStart:"2026-06-05", periodEnd:"2026-08-13", bedId:"Bed 6", bedDay:69, activeHrs:1497, activeHrsEstimated:true, avgTemp:19.2, stackTemp:31.0, avgRH:66, voc:166, pah:7950, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:10033, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P12", report:"JOB-3083 R1", date:"2026-08-25", periodStart:"2026-06-05", periodEnd:"2026-08-25", bedId:"Bed 6", bedDay:81, activeHrs:1758, activeHrsEstimated:true, avgTemp:18.9, stackTemp:25.5, avgRH:67, voc:109, pah:1300, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P13", report:"JOB-3083 R2", date:"2026-08-26", periodStart:"2026-08-25", periodEnd:"2026-08-26", bedId:"Bed 7", bedDay:1, activeHrs:22, activeHrsEstimated:true, avgTemp:19.6, stackTemp:28.8, avgRH:74, voc:0.093, pah:53.5, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P14", report:"JOB-3146", date:"2026-09-24", periodStart:"2026-08-25", periodEnd:"2026-09-24", bedId:"Bed 7", bedDay:30, activeHrs:651, activeHrsEstimated:true, avgTemp:17.2, stackTemp:21.0, avgRH:75, voc:1.0, pah:33.8, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9606, sameCarbon:false, dropletFalloutObserved:null },
 ];
 const INITIAL_CHARGES = [];
 
@@ -1450,8 +1471,14 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
     const pred = predictVOC(effectiveHrs, d.avgTemp, d.avgRH, vocC);
     return { period:d.period, actual:d.voc, pred, err: Math.round(((d.voc - pred) / Math.max(pred, 0.1)) * 100) };
   });
-  const p4Err = residualRows.find(r=>r.period==="P4");
-  const p7Err = residualRows.find(r=>r.period==="P7");
+  // v1.9.0: largest residuals found dynamically among calibration periods (log ratio), not hard-coded to P4/P7.
+  const calibResiduals = INITIAL_STACK_DATA.filter(d=>d.voc != null && d.activeHrs > 0 && d.sameCarbon === false)
+    .map(d=>residualRows.find(r=>r.period===d.period)).filter(Boolean)
+    .map(r=>({ ...r, lr: Math.log(Math.max(r.actual,0.01)/Math.max(r.pred,0.1)) }));
+  const underRow = calibResiduals.length ? calibResiduals.reduce((m,r)=>r.lr>m.lr?r:m) : null;
+  const overRow = calibResiduals.length ? calibResiduals.reduce((m,r)=>r.lr<m.lr?r:m) : null;
+  const p4Err = underRow && underRow.lr > 0 ? underRow : null;
+  const p7Err = overRow && overRow.lr < 0 ? overRow : null;
   const looColor = vocC.r2_loo == null ? C.muted : vocC.r2_loo < 0 ? C.red : vocC.r2_loo < 0.4 ? C.amber : C.teal;
   const looDisplay = vocC.r2_loo == null
     ? "insufficient data (need 4+ periods)"
@@ -1480,10 +1507,10 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
           "reliability metric. In-sample R2 is shown for audit trail only. " +
           "At n=" + vocC.n + " independent periods, LOO CV R2 has high variance " +
           "and is sensitive to influential outliers. A negative LOO CV R2 indicates " +
-          "the most influential period (currently P8, VOC 63.9 mg/m3, 3.2x ELV) " +
+          "the most influential period " +
           "cannot be predicted from the remaining " + (vocC.n - 1) + " periods -- " +
           "this is diagnostic information, not a model failure. " +
-          "LOO CV R2 will stabilise as n increases beyond 8 independent periods."}
+          "LOO CV R2 stabilises as n increases; v1.9.0 has 11 independent periods."}
         </div>
         {(function() {
           var bayesRefPeriod = INITIAL_STACK_DATA.filter(function(d) {
@@ -1520,7 +1547,7 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
         <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>P2 retained for anomaly display but excluded by sameCarbon filter. Prediction uncertainty x{Math.exp(vocUncertaintyMultiplier(vocC)).toFixed(2)} (effective RMSE band in log space).</div>
         {p4Err && p7Err && (
           <div style={{ fontSize:10, color:TINT.amberText, marginTop:6, padding:"7px 9px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:6, lineHeight:1.45 }}>
-            Largest calibration residuals: P4 actual {p4Err.actual}, predicted {p4Err.pred.toFixed(1)} ({p4Err.err>0?"+":""}{p4Err.err}%); P7 actual {p7Err.actual}, predicted {p7Err.pred.toFixed(1)} ({p7Err.err>0?"+":""}{p7Err.err}%). P7 over-prediction by {Math.abs(p7Err.err)}% means the model would recommend a changeout significantly earlier than necessary under cold winter conditions. P4 under-prediction means the model may not flag temperature-driven risk adequately in high summer. Treat scheduling outputs with corresponding caution.
+            Largest calibration residuals: under-prediction {p4Err.period} actual {p4Err.actual}, predicted {p4Err.pred.toFixed(1)} (+{p4Err.err}%); over-prediction {p7Err.period} actual {p7Err.actual}, predicted {p7Err.pred.toFixed(1)} ({p7Err.err}%). Under-prediction means the model can flag breakthrough later than it occurs; over-prediction means it recommends changeout earlier than necessary. Treat scheduling outputs with corresponding caution and use the uncertainty band.
           </div>
         )}
       </div>
@@ -1776,10 +1803,10 @@ function DashboardTab({ stackData, settings, weather, chargeLog, lastChangeout, 
           lineHeight:1.6
         }}>
           <strong style={{ color:C.ink }}>Compliance scheduling uses the VOC Safe Window figure only.</strong>
-          {" "}The Wheeler-Jonas theoretical maximum is a steady-state upper bound derived from adsorption theory (Dubinin-Radushkevich/Polanyi). It has no calibrated relationship to any observed breakthrough event in the P1-P8 dataset and consistently exceeds the regression-derived safe window by a large margin. It is shown for engineering reference only and must not be used as the basis for carbon changeout scheduling or stack test deferral decisions.
+          {" "}The Wheeler-Jonas theoretical maximum is a steady-state upper bound derived from adsorption theory (Dubinin-Radushkevich/Polanyi). It has no calibrated relationship to any observed breakthrough event in the P1-P14 dataset and consistently exceeds the regression-derived safe window by a large margin. It is shown for engineering reference only and must not be used as the basis for carbon changeout scheduling or stack test deferral decisions.
         </div>
         <div style={{ marginTop:10, padding:"10px 14px", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:7, fontSize:11, color:C.muted, lineHeight:1.6 }}>
-          Wheeler-Jonas theoretical maximum (engineering reference only): {wjBedLife.toLocaleString()} hrs - not a compliance limit. This figure has no calibrated relationship to any P1-P8 breakthrough observation and consistently exceeds the regression-derived safe window. It must not be used as the basis for carbon changeout scheduling or stack test deferral.
+          Wheeler-Jonas theoretical maximum (engineering reference only): {wjBedLife.toLocaleString()} hrs - not a compliance limit. This figure has no calibrated relationship to any P1-P14 breakthrough observation and consistently exceeds the regression-derived safe window. It must not be used as the basis for carbon changeout scheduling or stack test deferral.
           {latestCarbonBatch ? ` Current carbon batch ref: ${latestCarbonBatch.batchRef || latestCarbonBatch.date || "latest batch"} | iodine ${latestCarbonBatch.iodineMgG != null ? latestCarbonBatch.iodineMgG : "--"} mg/g | density ${latestCarbonBatch.densityKgM3 != null ? latestCarbonBatch.densityKgM3 : "--"} kg/m3.` : " No live carbon batch record available; default carbon properties applied."}
         </div>
       </Card>
@@ -1799,7 +1826,7 @@ function DashboardTab({ stackData, settings, weather, chargeLog, lastChangeout, 
         </div>
         {showWeighting && (
           <div style={{ fontSize:11, color:C.muted, marginTop:8, lineHeight:1.5 }}>
-            VOC currently weighted at {Math.round(vocRiskWeight*100)}% and PAH at {Math.round(pahRiskWeight*100)}%. This reflects operational priority: VOC is the current binding constraint (P8 exceedance 3.2x ELV; P3 and P6 also exceeded). PAH has been within ELV in all winter/spring periods. Weighting is configurable in Settings.
+            VOC currently weighted at {Math.round(vocRiskWeight*100)}% and PAH at {Math.round(pahRiskWeight*100)}%. This reflects operational priority: VOC is the binding constraint in every season (P8 105 mg/m3, 5.25x ELV; summer 2026 bed peaked at 166 mg/m3 at P11). PAH has been within ELV in all winter/spring periods but exceeded at P4, P10, P11 and P12 when stack temperature was ~25C or above. Weighting is configurable in Settings.
           </div>
         )}
         <div style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:8 }}>
@@ -2876,7 +2903,7 @@ function ModelArchitectureDetail({ vocC, pahC, settings }) {
             Active (n={pahC.n} independent periods). The PAH Ridge L2 regression intercept is refined via the same conjugate normal-normal update. Prior: N({pahC.c.toFixed(3)}, sigma={(pahC.rmse * 1.5).toFixed(3)}). Posterior intercept mean: {pahC.bayesC ? pahC.bayesC.mean.toFixed(4) : "n/a"} (delta: {pahC.bayesC ? (pahC.bayesC.mean - pahC.c).toFixed(4) : "n/a"}). Posterior std dev: {pahC.bayesC ? pahC.bayesC.stdDev.toFixed(4) : "n/a"}. Slope coefficients are unchanged and the posterior intercept is supplementary only; PAH R2 and the certified stack-test evidence remain the operative reliability basis.
           </>
         : <>
-            Inactive - requires 4+ independent PAH calibration periods. Currently n={pahC.n}. P8 PAH entry remains the highest-value next calibration point.
+            Inactive - requires 4+ independent PAH calibration periods. Currently n={pahC.n}. Enter the next certified stack test to extend calibration.
           </>
       }
       <br /><br />
@@ -3048,7 +3075,7 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
           </table>
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
-          P1-P3: same carbon charge (cumulative -- not independent data points). P4-P8: fresh carbon each period. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses raw ambient temperature consistent with calibration basis. PAH model uses MCERTS stack temp.
+          P1-P3: same carbon charge (cumulative -- not independent data points). P4-P14: tests on fresh beds introduced under the programme (P5/P6 share Bed 3; P9-P12 share Bed 6; P13/P14 share Bed 7). P9-P14 active hours are estimated at 21.7 hrs/day pending charge-log reconciliation. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses raw ambient temperature consistent with calibration basis. PAH model uses MCERTS stack temp.
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>
           Bayes Resid = ln(measured) - ln(Ridge predicted). Sequential Bayesian update on intercept c uses these residuals as observations. Positive mean residual indicates systematic underprediction; Bayesian posterior will shift intercept upward.
@@ -3670,7 +3697,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
             color={C.blue} sub="1SD multiplicative" />
         </div>
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.75 }}>
-          {"P7 vs P8 dual-mechanism confirmation: P7 ran 1,387 hrs at 6.1 deg C ambient (T_op 16.4 deg C at +10.3 offset) -- VOC 5.9 mg/m3, PAH 340 ug/m3, both well inside ELV. P8 ran 1,495 hrs at 11.6 deg C ambient (T_op 21.9 deg C) -- VOC 63.9 mg/m3 (3.2x ELV), PAH result outstanding. P4 ran 380 hrs at 22.5 deg C ambient (T_op 32.8 deg C) -- VOC 18.2 mg/m3 (inside ELV), PAH 5,369 ug/m3 (5.4x ELV). This dataset confirms the dual breakthrough mechanism: VOC failure is hours-driven (P8 at modest temperature); PAH failure is temperature-driven (P4 at low hours but high temperature). These are independent failure modes requiring separate scheduling tracks. PAH ambient threshold: ~" + pahAmbientThreshold_C.toFixed(1) + " deg C (model-derived, v1.6.0). Site-measured offset from Testo 925 spot readings: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C, delta +10.3 deg C. Model uses settings.stackTempCorrectionC for all live calculations; +10.3 deg C noted here as the directly measured site constant pending continuous logging validation."}
+          {"P7 vs P8 dual-mechanism confirmation: P7 ran 1,387 hrs at 6.1 deg C ambient (T_op 16.4 deg C at +10.3 offset) -- VOC 5.9 mg/m3, PAH 340 ug/m3, both well inside ELV. P8 ran 1,495 hrs at 11.6 deg C ambient (T_op 21.9 deg C) -- VOC 105 mg/m3 (5.25x ELV, certified JOB-2865), PAH 295 ug/m3 (inside ELV). P4 ran 380 hrs at 22.5 deg C ambient (T_op 32.8 deg C) -- VOC 18.2 mg/m3 (inside ELV), PAH 5,369 ug/m3 (5.4x ELV). This dataset confirms the dual breakthrough mechanism: VOC failure is hours-driven (P8 at modest temperature); PAH failure is temperature-driven (P4 at low hours but high temperature). These are independent failure modes requiring separate scheduling tracks. PAH ambient threshold: ~" + pahAmbientThreshold_C.toFixed(1) + " deg C (model-derived, v1.6.0). Site-measured offset from Testo 925 spot readings: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C, delta +10.3 deg C. Model uses settings.stackTempCorrectionC for all live calculations; +10.3 deg C noted here as the directly measured site constant pending continuous logging validation."}
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
           Seasonal PAH threshold references in this tab are fixed 500-hour comparison points for climatology only. Live Dashboard PAH status is recalculated at the current active-hours state.
@@ -4202,7 +4229,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
           </ComposedChart>
         </ResponsiveContainer>
         <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>
-          Confidence band: x{Math.exp(pahC && pahC.rmse != null ? pahC.rmse : PAH_RMSE_LOG).toFixed(3)} (RMSE in log space = {(pahC && pahC.rmse != null ? pahC.rmse : PAH_RMSE_LOG).toFixed(4)}). The narrow band reflects the high temperature-dominance of the PAH model (R2={pahC && pahC.r2 != null ? pahC.r2.toFixed(3) : "default"}). PAH predictions are sensitive to the ambient-to-stack temperature estimate; this uncertainty is the primary risk factor, not model RMSE. Stack temp override available above.
+          Confidence band: x{Math.exp(pahC && pahC.rmse != null ? pahC.rmse : PAH_RMSE_LOG).toFixed(3)} (RMSE in log space = {(pahC && pahC.rmse != null ? pahC.rmse : PAH_RMSE_LOG).toFixed(4)}). The band width reflects the scatter in the fresh-carbon PAH calibration (R2={pahC && pahC.r2 != null ? pahC.r2.toFixed(3) : "default"}). PAH predictions are sensitive to the ambient-to-stack temperature estimate; this uncertainty is the primary risk factor, not model RMSE. Stack temp override available above.
         </div>
       </Card>
 
@@ -4224,7 +4251,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
       <Card>
         <SectionTitle>Assumptions and Limitations</SectionTitle>
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.7 }}>
-          This forecast is derived from a multivariate VOC regression model calibrated against independent stack test periods (R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"}). PAH breach dates use the calibrated predictPAH model. Predictions should be treated as risk-informed planning estimates, not guaranteed changeout intervals. Model accuracy will improve as additional stack test periods are calibrated. Active ambient-to-inlet offset of +{activeAmbientToInletOffset.toFixed(1)}C applied to all ambient inputs. This tool supports but does not replace MCERTS-certified stack testing as the primary compliance verification method. Anchor scaling from a current VOC reading has been removed: a proportional residual at the current hours count cannot be assumed to hold across the forecast horizon under a log-linear model structure, and the bias was most severe at high residual periods such as P8 (63.9 mg/m3 actual, 3.2x ELV). The unanchored regression prediction is used throughout.
+          This forecast is derived from a multivariate VOC regression model calibrated against independent stack test periods (R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"}). PAH breach dates use the calibrated predictPAH model. Predictions should be treated as risk-informed planning estimates, not guaranteed changeout intervals. Model accuracy will improve as additional stack test periods are calibrated. Active ambient-to-inlet offset of +{activeAmbientToInletOffset.toFixed(1)}C applied to all ambient inputs. This tool supports but does not replace MCERTS-certified stack testing as the primary compliance verification method. Anchor scaling from a current VOC reading has been removed: a proportional residual at the current hours count cannot be assumed to hold across the forecast horizon under a log-linear model structure, and the bias was most severe at high residual periods such as P8 (105 mg/m3 certified, 5.25x ELV). The unanchored regression prediction is used throughout.
         </div>
         <div style={{ marginTop:10, padding:"10px 14px", background:settings.useConservativeRH?TINT.safeBg:TINT.amberBg, border:`1px solid ${settings.useConservativeRH?C.teal:C.amber}`, borderRadius:7, color:settings.useConservativeRH?TINT.safeText:TINT.amberText, fontSize:11, lineHeight:1.55, fontWeight:700 }}>
           Humidity assumption: {settings.useConservativeRH ? "Conservative mode ON - 90% RH applied to all forecast periods. BAT-aligned for Boston, Lincolnshire." : "Conservative mode OFF - 80% RH average applied. For compliance scheduling, enable Conservative Humidity Mode in Settings."}
@@ -4243,10 +4270,10 @@ function BATComplianceTab({ settings, onChange, canEdit, stackData }) {
   }).join(" | ");
   const rows = [
     ["BAT 51(a)", "Activated carbon adsorption with regeneration or disposal", "IMPLEMENTED", "6,000 kg GAC bed, single-pass, disposal at changeout"],
-    ["BAT 51(b)", "Regular monitoring of carbon saturation", "IMPLEMENTED", "MCERTS stack testing P1-P8, this model provides predictive scheduling"],
+    ["BAT 51(b)", "Regular monitoring of carbon saturation", "IMPLEMENTED", "MCERTS stack testing P1-P14, this model provides predictive scheduling"],
     ["BAT 51(c)", "Lead-lag (series) carbon bed configuration", "NOT YET IMPLEMENTED", "Identified as priority compliance intervention. Lead bed reaches saturation first and is replaced while lag bed continues to protect; provides direct compliance safety net without process interruption. Lower capital cost and operationally simpler than pre-treatment alternatives."],
-    ["BAT 52", "VOC ELV 20 mg/m3", "MONITORING", "ELV formally applied from November 2025. P8 exceedance 63.9 mg/m3 (3.2x ELV). Corrective action in progress."],
-    ["BAT 52", "PAH ELV " + PAH_ELV_PERMIT_LABEL, "MONITORING", "P4 exceedance 5,369 ug/m3 (temperature-driven). P8 PAH result outstanding."],
+    ["BAT 52", "VOC ELV 20 mg/m3", "MONITORING", "ELV formally applied from November 2025. Exceedances P8 105 mg/m3 and P9-P12 44.6-166 mg/m3 (summer 2026 bed). Corrective action in progress."],
+    ["BAT 52", "PAH ELV " + PAH_ELV_PERMIT_LABEL, "MONITORING", "Temperature-driven exceedances: P4 5,369, P10 2,116, P11 7,950, P12 1,300 ug/m3. P8 295 ug/m3 (inside ELV)."],
     ["Permit A4", "Liquid Droplets Fallout (Vapour Separation Plant)", "MONITORING", "Status by period: " + dropletFalloutSummary + ". Permit Reference: Schedule 4, Table 4.1. Qualitative inspection condition, not a concentration limit. Not used in predictive model calculations."],
   ];
   return (
@@ -4789,7 +4816,7 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
             }} />
           </label>
           <Btn onClick={()=>{ void onRunChargeImportScan(); }} variant="gold" disabled={!canEdit}>Run charge import scan</Btn>
-          <Btn onClick={()=>{ if(window.confirm("This will delete all shared charge log entries, CoA records, thermal log entries, and settings overrides for every user. The P1-P8 seed data will be restored. Confirm?")){ void onResetPlatform(); } }} variant="danger" disabled={!isAdmin}>Clear all data</Btn>
+          <Btn onClick={()=>{ if(window.confirm("This will delete all shared charge log entries, CoA records, thermal log entries, and settings overrides for every user. The P1-P14 seed data will be restored. Confirm?")){ void onResetPlatform(); } }} variant="danger" disabled={!isAdmin}>Clear all data</Btn>
         </div>
         {authState && authState.user && authState.user.role === "viewer" ? <div style={{ marginTop:8, fontSize:11, color:C.muted }}>Viewer accounts can inspect shared state and retained documents, but they cannot change platform data.</div> : null}
         {!isAdmin ? <div style={{ marginTop:8, fontSize:11, color:C.muted }}>Only platform admins can clear all shared data.</div> : null}
@@ -4832,7 +4859,11 @@ export default function App() {
   const setStackDataExtra = useCallback(nextValueOrUpdater => updateKey("cgb_stackDataExtra", nextValueOrUpdater), [updateKey]);
   // Dataset is A4-only by construction: all stack test rows in this application
   // represent Emission Point A4 (Creosote Impregnation Plant), not A1.
-  const stackData = useMemo(()=>[...INITIAL_STACK_DATA, ...stackDataExtra], [stackDataExtra]);
+  const stackData = useMemo(()=>{
+    // Seed periods take precedence: drop any manually-entered duplicates (e.g. P9-P14 keyed in before v1.9.0).
+    const seedPeriods = new Set(INITIAL_STACK_DATA.map(d=>d.period));
+    return [...INITIAL_STACK_DATA, ...(stackDataExtra || []).filter(d=>!seedPeriods.has(d.period))];
+  }, [stackDataExtra]);
   const coaData = platformState.cgb_coaData;
   const setCoaData = useCallback(nextValueOrUpdater => updateKey("cgb_coaData", nextValueOrUpdater), [updateKey]);
   const chargeLog = platformState.cgb_chargeLog;

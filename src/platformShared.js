@@ -37,7 +37,7 @@ export function createDefaultPlatformState() {
     cgb_coaData: [],
     cgb_carbonCoaData: [],
     cgb_chargeLog: [],
-    cgb_lastChangeout: "2026-03-20",
+    cgb_lastChangeout: "2026-11-05",
     cgb_downtimeHrs: 0,
     cgb_thermalLog: [],
     cgb_loggerLog: [],
