@@ -2266,33 +2266,101 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onDeleteCharge, lastChangeout
         </div>
       </Card>
 
-      {chargeLog.length > 0 && (
-        <Card>
-          <SectionTitle>Charge Log ({chargeLog.length} entries)</SectionTitle>
+      {chargeLog.length > 0 && <ChargeLogCard chargeLog={chargeLog} onDeleteCharge={onDeleteCharge} canEdit={canEdit} />}
+    </div>
+  );
+}
+
+// Charge records: the full log stays in the platform state, but the page shows a
+// monthly summary and keeps individual records behind a filtered, paged view.
+function ChargeLogCard({ chargeLog, onDeleteCharge, canEdit }) {
+  const [open, setOpen] = useState(false);
+  const [monthsShown, setMonthsShown] = useState(6);
+  const [filterMonth, setFilterMonth] = useState("");
+  const [page, setPage] = useState(0);
+  const PAGE = 25;
+  const rows = useMemo(() => (chargeLog || []).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))), [chargeLog]);
+  const months = useMemo(() => {
+    const map = new Map();
+    rows.forEach(r => {
+      const k = String(r.date).slice(0,7);
+      if (!map.has(k)) map.set(k, { month:k, p1:0, p2:0, hrs:0 });
+      const m = map.get(k);
+      const t = normalizeChargeType(r.type);
+      const n = r.count || 1;
+      if (t === "plant1") m.p1 += n; else m.p2 += n;
+      m.hrs += (r.durationHrs || (t === "plant1" ? P1_AVG_HRS : P2_AVG_HRS)) * n;
+    });
+    return [...map.values()].sort((a,b)=>b.month.localeCompare(a.month));
+  }, [rows]);
+  const filtered = filterMonth ? rows.filter(r => String(r.date).startsWith(filterMonth)) : rows;
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
+  const pageRows = filtered.slice(page * PAGE, page * PAGE + PAGE);
+  const th = { textAlign:"left", padding:"8px 10px", fontSize:11, fontWeight:600, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase", borderBottom:`1px solid ${C.border}` };
+  const td = { padding:"8px 10px", borderBottom:`1px solid ${C.border}`, fontSize:13 };
+  const first = rows.length ? rows[rows.length - 1].date : "--";
+  const last = rows.length ? rows[0].date : "--";
+  const monthLabel = k => MONTH_NAMES[Number(k.slice(5,7)) - 1] + " " + k.slice(0,4);
+
+  return (
+    <Card>
+      <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"space-between", alignItems:"baseline", gap:10, marginBottom:12 }}>
+        <SectionTitle>Charge records</SectionTitle>
+        <div style={{ fontSize:13, color:C.muted }}>{rows.length.toLocaleString("en-GB")} records - {first} to {last}</div>
+      </div>
+      <div style={{ overflowX:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:520 }}>
+          <thead><tr><th style={th}>Month</th><th style={th}>Plant 1 charges</th><th style={th}>Plant 2 charges</th><th style={th}>Active hours</th><th style={th}></th></tr></thead>
+          <tbody>
+            {months.slice(0, monthsShown).map(m => (
+              <tr key={m.month}>
+                <td style={{ ...td, fontWeight:600 }}>{monthLabel(m.month)}</td>
+                <td style={{ ...td, fontFamily:MONO }}>{m.p1}</td>
+                <td style={{ ...td, fontFamily:MONO }}>{m.p2}</td>
+                <td style={{ ...td, fontFamily:MONO }}>{m.hrs.toFixed(1)}</td>
+                <td style={{ ...td, textAlign:"right" }}>
+                  <button type="button" onClick={()=>{ setFilterMonth(m.month); setPage(0); setOpen(true); }} style={{ background:"none", border:"none", color:C.rund, cursor:"pointer", fontSize:13, fontWeight:600, fontFamily:"inherit" }}>View records</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:10, marginTop:12 }}>
+        {months.length > monthsShown ? <Btn small variant="ghost" onClick={()=>setMonthsShown(n=>n + 12)}>Show earlier months</Btn> : null}
+        <Btn small variant={open ? "ghost" : "primary"} onClick={()=>{ setOpen(o=>!o); setFilterMonth(""); setPage(0); }}>{open ? "Hide individual records" : "Show individual records"}</Btn>
+      </div>
+      {open ? (
+        <div style={{ marginTop:16 }}>
+          <div style={{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:10, marginBottom:10 }}>
+            <label style={{ fontSize:12, color:C.muted }}>Month
+              <select value={filterMonth} onChange={e=>{ setFilterMonth(e.target.value); setPage(0); }} style={{ marginLeft:8, height:34, borderRadius:8, border:`1px solid ${C.border}`, padding:"0 8px", fontFamily:"inherit" }}>
+                <option value="">All months</option>
+                {months.map(m => <option key={m.month} value={m.month}>{monthLabel(m.month)}</option>)}
+              </select>
+            </label>
+            <span style={{ fontSize:12, color:C.muted }}>{filtered.length} records - page {page + 1} of {pages}</span>
+            <Btn small variant="ghost" disabled={page === 0} onClick={()=>setPage(p=>Math.max(0, p - 1))}>Newer</Btn>
+            <Btn small variant="ghost" disabled={page >= pages - 1} onClick={()=>setPage(p=>Math.min(pages - 1, p + 1))}>Older</Btn>
+          </div>
           <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-              <thead>
-                <tr style={{ borderBottom:`2px solid ${C.border}` }}>
-                  {["Date","Plant","Charges","Hrs/charge","Total hrs","Notes",""].map(h=>(
-                    <th key={h} style={{ textAlign:"left", padding:"7px 10px", fontSize:10, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
+            <table style={{ width:"100%", borderCollapse:"collapse", minWidth:640 }}>
+              <thead><tr>{["Date","Plant","Charges","Hrs/charge","Total hrs","Notes",""].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>
-                {[...chargeLog].reverse().map((row,i)=>{
+                {pageRows.map(row => {
                   const plantType = normalizeChargeType(row.type);
-                  const avg=plantType==="plant1"?P1_AVG_HRS:P2_AVG_HRS;
-                  const dur=row.durationHrs||avg;
+                  const avg = plantType === "plant1" ? P1_AVG_HRS : P2_AVG_HRS;
+                  const dur = row.durationHrs || avg;
                   return (
-                    <tr key={row.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?C.ivory:C.surface }}>
-                      <td style={{ padding:"7px 10px", fontFamily:MONO }}>{row.date}</td>
-                      <td style={{ padding:"7px 10px" }}><Badge text={plantType==="plant1"?"Plant 1":"Plant 2"} color={plantType==="plant1"?C.rund:C.blue} /></td>
-                      <td style={{ padding:"7px 10px", fontFamily:MONO, textAlign:"center" }}>{row.count||1}</td>
-                      <td style={{ padding:"7px 10px", fontFamily:MONO }}>{row.durationHrs?row.durationHrs.toFixed(2):`~${avg} (avg)`}</td>
-                      <td style={{ padding:"7px 10px", fontFamily:MONO, fontWeight:600 }}>{(dur*(row.count||1)).toFixed(2)}</td>
-                      <td style={{ padding:"7px 10px", color:C.muted, fontSize:11 }}>{row.notes||""}</td>
-                      <td style={{ padding:"7px 10px" }}>
-                        <button onClick={()=>onDeleteCharge(row.id)} disabled={!canEdit} style={{ background:"none", border:"none", cursor:canEdit?"pointer":"not-allowed", color:C.red, fontWeight:700, fontSize:13, opacity:canEdit?1:0.45 }}>x</button>
+                    <tr key={row.id}>
+                      <td style={{ ...td, fontFamily:MONO }}>{row.date}</td>
+                      <td style={td}><Badge text={plantType === "plant1" ? "Plant 1" : "Plant 2"} color={plantType === "plant1" ? C.rund : C.blue} /></td>
+                      <td style={{ ...td, fontFamily:MONO }}>{row.count || 1}</td>
+                      <td style={{ ...td, fontFamily:MONO }}>{row.durationHrs ? row.durationHrs.toFixed(2) : "~" + avg + " (avg)"}</td>
+                      <td style={{ ...td, fontFamily:MONO, fontWeight:600 }}>{(dur * (row.count || 1)).toFixed(2)}</td>
+                      <td style={{ ...td, color:C.muted, fontSize:12 }}>{row.notes || ""}</td>
+                      <td style={td}>
+                        <button type="button" aria-label={"Delete charge record " + row.date} onClick={()=>onDeleteCharge(row.id)} disabled={!canEdit} style={{ background:"none", border:"none", cursor:canEdit ? "pointer" : "not-allowed", color:C.red, fontWeight:600, fontSize:13, opacity:canEdit ? 1 : 0.45, fontFamily:"inherit" }}>Delete</button>
                       </td>
                     </tr>
                   );
@@ -2300,9 +2368,9 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onDeleteCharge, lastChangeout
               </tbody>
             </table>
           </div>
-        </Card>
-      )}
-    </div>
+        </div>
+      ) : null}
+    </Card>
   );
 }
 
