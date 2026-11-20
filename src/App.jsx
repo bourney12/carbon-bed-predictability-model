@@ -1508,6 +1508,12 @@ function usePlatformDocument(onSaved, enabled) {
     applyServerDocument(doc);
   }, [applyServerDocument]);
 
+  const importCreosoteWorkbook = useCallback(async payload => {
+    const res = await platformRequest("/api/imports/creosote/upload", { method: "POST", body: JSON.stringify(payload) });
+    if (res && res.doc) applyServerDocument(res.doc);
+    return res ? res.result : null;
+  }, [applyServerDocument]);
+
   return {
     platformState,
     platformMeta,
@@ -1517,6 +1523,7 @@ function usePlatformDocument(onSaved, enabled) {
     resetPlatform,
     runChargeImportScan,
     refreshFromServer,
+    importCreosoteWorkbook,
   };
 }
 
@@ -2669,7 +2676,7 @@ function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchi
             {pdfImporting ? pdfStatus : "Drag MCERTS stack test PDF here or browse"}
           </div>
           <input type="file" accept=".pdf" id="stackPdfFile" disabled={!canEdit} style={{ display:"none" }} onChange={e=>handleStackPdf(e.target.files[0])} />
-          <label htmlFor="stackPdfFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse PDF</label>
+          <label htmlFor="stackPdfFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse workbook</label>
           {pdfStatus && <div style={{ fontSize:12, color:pdfImporting?C.amber:pdfStatus.startsWith("Import failed")||pdfStatus.startsWith("PDF files")?C.red:C.teal, marginTop:10 }}>{pdfStatus}</div>}
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
@@ -2849,7 +2856,112 @@ function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
   );
 }
 
-function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchiveDocument, canArchiveDocuments, canEdit, creoDeliveries, creoDailyLog, creoImportStatus }) {
+// ---- Creosote Tank and Flash Point Log (.xlsx) reader, in the browser ----
+// Reads the Deliveries and Daily Log tabs straight from the workbook (a zip of XML parts),
+// matching columns by header text, the same mapping as scripts/sync-creosote-xlsx.ps1.
+async function readXlsxParts(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const dv = new DataView(buf.buffer);
+  let e = buf.length - 22;
+  while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error("Not an .xlsx workbook");
+  const count = dv.getUint16(e + 10, true);
+  let p = dv.getUint32(e + 16, true);
+  const entries = {};
+  for (let i = 0; i < count; i++) {
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const off = dv.getUint32(p + 42, true);
+    entries[new TextDecoder().decode(buf.subarray(p + 46, p + 46 + nlen))] = { method, csize, off };
+    p += 46 + nlen + xlen + clen;
+  }
+  return async function read(name) {
+    const x = entries[name];
+    if (!x) return null;
+    const lf = dv.getUint16(x.off + 26, true), lx = dv.getUint16(x.off + 28, true);
+    const data = buf.subarray(x.off + 30 + lf + lx, x.off + 30 + lf + lx + x.csize);
+    if (x.method === 0) return new TextDecoder().decode(data);
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return await new Response(stream).text();
+  };
+}
+function xlsxSerialToIso(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 20000 || n > 80000) return "";
+  return new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000).toISOString().slice(0, 10);
+}
+function xlsxNum(v) {
+  if (v == null || v === "") return null;
+  const n = Number(String(v).replace(/[<>,\s]/g, ""));
+  return Number.isFinite(n) ? Math.round(n * 1e6) / 1e6 : null;
+}
+async function readCreosoteWorkbook(file, sinceDate) {
+  const read = await readXlsxParts(file);
+  const parser = new DOMParser();
+  const ssXml = await read("xl/sharedStrings.xml");
+  const shared = ssXml ? [...parser.parseFromString(ssXml, "application/xml").getElementsByTagName("si")].map(si => [...si.getElementsByTagName("t")].map(t => t.textContent).join("")) : [];
+  const wb = parser.parseFromString(await read("xl/workbook.xml"), "application/xml");
+  const rels = parser.parseFromString(await read("xl/_rels/workbook.xml.rels"), "application/xml");
+  const relMap = {};
+  [...rels.getElementsByTagName("Relationship")].forEach(r => { relMap[r.getAttribute("Id")] = r.getAttribute("Target"); });
+  const sheetPath = {};
+  [...wb.getElementsByTagName("sheet")].forEach(sh => {
+    const target = relMap[sh.getAttribute("r:id")] || "";
+    sheetPath[sh.getAttribute("name")] = "xl/" + target.replace(/^\/?xl\//, "");
+  });
+  const colIndex = ref => { let n = 0; for (const ch of ref.replace(/\d/g, "")) n = n * 26 + ch.charCodeAt(0) - 64; return n; };
+  async function sheetRows(name) {
+    if (!sheetPath[name]) throw new Error("Tab '" + name + "' not found in the workbook");
+    const xml = parser.parseFromString(await read(sheetPath[name]), "application/xml");
+    return [...xml.getElementsByTagName("row")].map(row => {
+      const out = {};
+      [...row.getElementsByTagName("c")].forEach(c => {
+        const ci = colIndex(c.getAttribute("r"));
+        if (ci > 40) return;
+        const v = c.getElementsByTagName("v")[0];
+        const is = c.getElementsByTagName("is")[0];
+        let val = v ? v.textContent : is ? is.textContent : "";
+        if (c.getAttribute("t") === "s") val = shared[Number(val)];
+        if (val !== "" && val != null) out[ci] = val;
+      });
+      return out;
+    });
+  }
+  function headerMap(header, wanted) {
+    const cols = Object.keys(header).map(Number).sort((a, b) => a - b);
+    const map = {};
+    Object.keys(wanted).forEach(k => {
+      const prefix = wanted[k].toLowerCase();
+      const hit = cols.find(c => String(header[c]).split("\n")[0].trim().toLowerCase().startsWith(prefix));
+      if (hit != null) map[k] = hit;
+    });
+    return map;
+  }
+  const del = await sheetRows("Deliveries");
+  const dm = headerMap(del[0] || {}, { date:"Delivery date", intoTankDate:"Date into tanks", status:"Status", supplier:"Supplier", type:"Type", qtyKg:"Quantity", certNo:"Cert no", flashpoint:"Flash point", crystallisation:"Crystallisation", tarAcid:"Tar acid", tolueneInsol:"Toluene insol", naphthalene:"Naphthalene", bap:"BaP", water:"Water", density:"Density", dist235:"Distillation 0-235", dist300:"Distillation 0-300", dist355:"Distillation 0-355", orderNo:"Order no", transport:"Transport", stockDate:"Stock date", outOfSpec:"Out-of-spec" });
+  if (dm.date == null) throw new Error("Deliveries tab: 'Delivery date' column not found");
+  const numeric = ["qtyKg","flashpoint","crystallisation","tarAcid","tolueneInsol","naphthalene","bap","water","density","dist235","dist300","dist355"];
+  const dates = ["date","intoTankDate","stockDate"];
+  const deliveries = del.slice(1).map(r => {
+    const o = {};
+    Object.keys(dm).forEach(k => {
+      const v = r[dm[k]];
+      o[k] = dates.includes(k) ? xlsxSerialToIso(v) : numeric.includes(k) ? xlsxNum(v) : (v == null ? "" : String(v).trim());
+    });
+    return o;
+  }).filter(o => o.date && o.date >= sinceDate);
+  const log = await sheetRows("Daily Log");
+  const lm = headerMap(log[0] || {}, { date:"Date", store1Kg:"Store Tank 1", store2Kg:"Store Tank 2", work1Kg:"Work Tank 1", work2Kg:"Work Tank 2", totalKg:"Total stock", deliveredKg:"Delivered since", usageKg:"Usage since", workingDays:"Working days", usagePerDayKg:"Usage per working day", ambientC:"Ambient", correctedKg:"Corrected stock", idleDays:"Idle working days" });
+  if (lm.date == null) throw new Error("Daily Log tab: 'Date' column not found");
+  const dailyLog = log.slice(1).map(r => {
+    const o = { date: xlsxSerialToIso(r[lm.date]) };
+    Object.keys(lm).forEach(k => { if (k !== "date") o[k] = xlsxNum(r[lm[k]]); });
+    return o;
+  }).filter(o => o.date && o.date >= sinceDate && (o.store1Kg != null || o.totalKg != null));
+  return { fileName:file.name, fileModifiedAt:file.lastModified ? new Date(file.lastModified).toISOString() : null, sinceDate, deliveries, dailyLog };
+}
+
+function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchiveDocument, canArchiveDocuments, canEdit, creoDeliveries, creoDailyLog, creoImportStatus, onImportWorkbook }) {
   const [form, setForm] = useState({ date:"", certNo:"", flashpoint:"", crystallisation:"", naphthalene:"", bap:"" });
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState("");
@@ -2869,41 +2981,18 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
   }, [defaultRange.from, defaultRange.to, rangeFrom, rangeTo]);
 
   const handleFile = useCallback(async (file)=>{
-    if(!file||file.type!=="application/pdf"){setImportStatus("PDF files only.");return;}
-    if(!canEdit){setImportStatus("Viewer mode: CoA import is disabled.");return;}
-    setImporting(true);setImportStatus("Reading PDF...");
+    if(!file || !/\.xlsx$/i.test(file.name)){setImportStatus("Choose the Creosote Tank and Flash Point Log workbook (.xlsx).");return;}
+    if(!canEdit){setImportStatus("Viewer mode: import is disabled.");return;}
+    if(typeof DecompressionStream === "undefined"){setImportStatus("This browser cannot read .xlsx files. Use a current version of Edge or Chrome.");return;}
+    setImporting(true);setImportStatus("Reading workbook...");
     try {
-      const base64 = await fileToBase64(file);
-      let archiveNotice = "";
-      if (canArchiveDocuments && onArchiveDocument) {
-        try {
-          await onArchiveDocument({
-            category: "coa-pdf",
-            fileName: file.name,
-            mimeType: file.type || "application/pdf",
-            base64,
-            notes: "Original Koppers CoA PDF retained from browser import.",
-          });
-          archiveNotice = " PDF archived to server.";
-        } catch (archiveError) {
-          archiveNotice = ` Archive failed: ${archiveError.message}.`;
-        }
-      }
-      setImportStatus("Extracting CoA on server...");
-      const data = await platformRequest("/api/extract/coa", {
-        method: "POST",
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type || "application/pdf",
-          base64,
-        }),
-      });
-      const parsed = data.extracted || {};
-      onImport(parsed);
-      setImportStatus("Imported: "+parsed.certNo+" (CoA date "+parsed.date+")"+archiveNotice);
-    } catch(e){setImportStatus("Import failed: "+e.message);}
+      const payload = await readCreosoteWorkbook(file, "2024-01-01");
+      setImportStatus("Read " + payload.deliveries.length + " deliveries and " + payload.dailyLog.length + " tank readings. Saving...");
+      const result = await onImportWorkbook(payload);
+      setImportStatus(result && result.summary ? result.summary : "Imported.");
+    } catch(e){ setImportStatus("Import failed: " + e.message); }
     setImporting(false);
-  },[canArchiveDocuments,canEdit,onArchiveDocument,onImport]);
+  },[canEdit,onImportWorkbook]);
 
   const avgNaph = coaRows.filter(d=>d.naphthalene).length>0
     ? coaRows.filter(d=>d.naphthalene).reduce((a,d)=>a+d.naphthalene,0)/coaRows.filter(d=>d.naphthalene).length : null;
@@ -3090,16 +3179,17 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
       </Card>
 
       <Card>
-        <SectionTitle>Import Koppers CoA PDF (Auto-Extract)</SectionTitle>
+        <SectionTitle>Load creosote log (Excel)</SectionTitle>
+        <div style={{ fontSize:13, color:C.muted, marginBottom:12, lineHeight:1.5 }}>Drop a copy of the Creosote Tank and Flash Point Log (.xlsx). Deliveries and CoA results from the Deliveries tab, and tank readings from the Daily Log tab, are loaded from 1 Jan 2024 onward. The workbook is the master record: loading it again replaces that range. This does the same job as the automatic sync from Darrel's folder once that is set up.</div>
         <div onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)}
           onDrop={e=>{e.preventDefault();setDragOver(false);handleFile(e.dataTransfer.files[0]);}}
           style={{ border:`2px dashed ${dragOver?C.rund:C.border}`, borderRadius:10, padding:"28px 20px", textAlign:"center", background:dragOver?alpha(C.rund,3):C.ivory, transition:"all 0.2s" }}>
-          <div style={{ fontSize:13, color:C.muted, marginBottom:10 }}>{importing?importStatus:"Drag Koppers CoA PDF here or browse"}</div>
-          <input type="file" accept=".pdf" id="coaFile" disabled={!canEdit} style={{ display:"none" }} onChange={e=>handleFile(e.target.files[0])} />
-          <label htmlFor="coaFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse PDF</label>
+          <div style={{ fontSize:13, color:C.muted, marginBottom:10 }}>{importing?importStatus:"Drag the creosote log workbook here or browse"}</div>
+          <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" id="coaFile" disabled={!canEdit} style={{ display:"none" }} onChange={e=>handleFile(e.target.files[0])} />
+          <label htmlFor="coaFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse workbook</label>
           {importStatus && <div style={{ fontSize:12, color:importing?C.amber:C.teal, marginTop:10 }}>{importStatus}</div>}
         </div>
-        {!canEdit ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Viewer mode: CoA upload and WJ setting changes are locked.</div> : null}
+        {!canEdit ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Viewer mode: workbook import and WJ setting changes are locked.</div> : null}
       </Card>
 
       {filteredChartData.length > 0 && (
@@ -3637,7 +3727,7 @@ function CarbonQualityTab({ carbonCoaData, onAdd, onDelete, onArchiveDocument, c
           style={{ border:`2px dashed ${dragOver?C.rund:C.border}`, borderRadius:10, padding:"28px 20px", textAlign:"center", background:dragOver?alpha(C.rund,3):C.ivory, transition:"all 0.2s" }}>
           <div style={{ fontSize:13, color:C.muted, marginBottom:10 }}>{importing ? status : "Drag carbon supplier CoA PDF here or browse"}</div>
           <input type="file" accept=".pdf" id="carbonCoaFile" disabled={!canEdit} style={{ display:"none" }} onChange={e=>handleFile(e.target.files[0])} />
-          <label htmlFor="carbonCoaFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse PDF</label>
+          <label htmlFor="carbonCoaFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse workbook</label>
           {status && <div style={{ fontSize:12, color:importing?C.amber:C.teal, marginTop:10 }}>{status}</div>}
         </div>
       </Card>
@@ -5860,6 +5950,7 @@ export default function App() {
     importBackup,
     resetPlatform,
     runChargeImportScan,
+    importCreosoteWorkbook,
   } = usePlatformDocument(markSaved, !!authState.user);
   const { adminData, refreshAdminData, uploadDocument, createUser, downloadDocument } = usePlatformAdminData(!!authState.user, isAdmin);
   const stackDataExtra = platformState.cgb_stackDataExtra;
@@ -6012,7 +6103,7 @@ export default function App() {
         {activeTab==="stack"        && <StackTestsTab   stackData={stackData} onAdd={e=>setStackDataExtra(d=>[...d,e])} settings={settings} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} />}
         {activeTab==="thermal"      && <ThermalAnalysisTab thermalLog={thermalLog} thermalStats={thermalStats} onAddThermalEntry={entry=>setThermalLog(list=>[...list, entry])} onDeleteThermalEntry={id=>setThermalLog(list=>list.filter(entry=>entry.id!==id))} loggerLog={loggerLog} onImportLoggerData={rows=>setLoggerLog(list=>[...list, ...rows])} onClearLoggerData={()=>setLoggerLog([])} onUpdateCorrectionFactor={newDelta=>updateSetting("stackTempCorrectionC", newDelta)} settings={settings} onChangeSetting={updateSetting} canEdit={canEdit} />}
-        {activeTab==="coa"          && <CoATab creoDeliveries={platformState.cgb_creoDeliveries} creoDailyLog={platformState.cgb_creoDailyLog} creoImportStatus={platformMeta && platformMeta.imports ? platformMeta.imports.creosote : null} coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
+        {activeTab==="coa"          && <CoATab onImportWorkbook={importCreosoteWorkbook} creoDeliveries={platformState.cgb_creoDeliveries} creoDailyLog={platformState.cgb_creoDailyLog} creoImportStatus={platformMeta && platformMeta.imports ? platformMeta.imports.creosote : null} coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="carbonquality" && <CarbonQualityTab carbonCoaData={carbonCoaData} onAdd={entry=>setCarbonCoaData(d=>[...d, entry])} onDelete={id=>setCarbonCoaData(d=>d.filter(e=>e.id!==id))} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} settings={settings} />}
         {activeTab==="documents"    && <DocumentLibraryTab adminData={adminData} isAdmin={isAdmin} onDownloadDocument={downloadDocument} />}
         {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} />}
