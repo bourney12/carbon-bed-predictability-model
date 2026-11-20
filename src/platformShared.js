@@ -20,6 +20,7 @@ export function createDefaultSettings() {
     naphthaleneFrac: 0.53,
     utilisationRate: 0.82,
     typicalTempC: 12.0,
+    creoRateTPerDay: 11,
     typicalRH: 80,
     stackTempCorrectionC: 10.3,
     preTestBufferDays: 14,

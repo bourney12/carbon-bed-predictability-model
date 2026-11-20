@@ -87,7 +87,7 @@ function useTheme() {
 }
 const MONO = "'JetBrains Mono', Consolas, 'Courier New', monospace";
 const HEAD_FONT = "'Space Grotesk', Inter, system-ui, sans-serif";
-const MODEL_VERSION = "v1.9.0";
+const MODEL_VERSION = "v2.1.0";
 const MODEL_BUILD_DATE = "2026-11-20";
 
 // ============================================================
@@ -235,6 +235,7 @@ function calcEffectiveHours(activeHrs, periodStart, periodEnd, stackTestRecord) 
   if (totalMs <= 0) return activeHrs;
 
   var weightedMs = 0;
+  var coveredMs = 0;
   FAN_CONFIG_LOG.forEach(function(cfg) {
     var cfgFrom = new Date(cfg.from);
     var cfgTo = cfg.to ? new Date(cfg.to) : new Date("2099-12-31");
@@ -242,12 +243,17 @@ function calcEffectiveHours(activeHrs, periodStart, periodEnd, stackTestRecord) 
     var overlapEnd = cfgTo < end ? cfgTo : end;
     if (overlapEnd > overlapStart) {
       var overlapMs = overlapEnd - overlapStart;
+      coveredMs += overlapMs;
       var effectiveFlow = effectiveFlowForPeriod(stackTestRecord, cfg.typicalStackDischargeFlow_m3hr);
       var flowRatio = effectiveFlow / REFERENCE_FLOW;
       weightedMs += overlapMs * flowRatio;
     }
   });
 
+  // v2.1.0: time before the first logged fan configuration (periods starting before
+  // 13 Nov 2024) counts at the reference flow. It was previously counted as zero flow,
+  // which roughly halved P1-P3 hours.
+  weightedMs += Math.max(0, totalMs - coveredMs) * 1.0;
   var correctionFactor = totalMs > 0 ? weightedMs / totalMs : 1.0;
   return activeHrs * correctionFactor;
 }
@@ -310,27 +316,30 @@ const STACK_TEMP_B =  0.685;
 // from changeout to test date. measuredFlow_m3hr is informational only and
 // is deliberately not fed to calcEffectiveHours, keeping P8-P14 on the same
 // effective-hours basis as P1-P7.
+// creoT: creosote used (tonnes, positive tank-delta usage) and workingDays: working days,
+// both summed from the Creosote Tank and Flash Point Log Daily Log between periodStart and
+// the test date (read 20 Nov 2026). Used by the creosote-throughput trial model.
 const INITIAL_STACK_DATA = [
-  { period:"P1", date:"2025-01-16", periodStart:"2024-09-01", periodEnd:"2025-01-16", activeHrs:320,  avgTemp:8.0,  stackTemp:18.0, avgRH:82, voc:10.6, pah:524.9,  charges:55,  p1Charges:32, p2Charges:23,  sameCarbon:true,  dropletFalloutObserved:null },
-  { period:"P2", date:"2025-03-12", periodStart:"2024-09-01", periodEnd:"2025-03-12", activeHrs:780,  avgTemp:12.0, stackTemp:22.0, avgRH:78, voc:45.0, pah:865.0,  charges:133, p1Charges:78, p2Charges:55,  sameCarbon:true, dropletFalloutObserved:null,
+  { period:"P1", creoT:757.8, workingDays:89, date:"2025-01-16", periodStart:"2024-09-01", periodEnd:"2025-01-16", activeHrs:320,  avgTemp:8.0,  stackTemp:18.0, avgRH:82, voc:10.6, pah:524.9,  charges:55,  p1Charges:32, p2Charges:23,  sameCarbon:true,  dropletFalloutObserved:null },
+  { period:"P2", creoT:1150.7, workingDays:128, date:"2025-03-12", periodStart:"2024-09-01", periodEnd:"2025-03-12", activeHrs:780,  avgTemp:12.0, stackTemp:22.0, avgRH:78, voc:45.0, pah:865.0,  charges:133, p1Charges:78, p2Charges:55,  sameCarbon:true, dropletFalloutObserved:null,
     flowAnomalous:true,
     excludeFromFlowCalcs:true,
     anomalyNote:"Stack discharge flow 3,659 m3/hr vs 7,000-12,000 m3/hr all other Config A periods. Config A pulleys confirmed installed at time of test. Envirocare certified measurement stands - raw traverse data not available for review. No operational cause identified. Anomaly formally unresolvable. Excluded from Wheeler-Jonas EBCT, mass flux calculations, and T_operative correction derivation. Retained in VOC and PAH regression with this flag. See Stack Tests tab." },
-  { period:"P3", date:"2025-05-20", periodStart:"2024-09-01", periodEnd:"2025-05-20", activeHrs:1100, avgTemp:16.0, stackTemp:26.0, avgRH:74, voc:55.6, pah:2475.0, charges:188, p1Charges:110, p2Charges:78, sameCarbon:true,  dropletFalloutObserved:null },
-  { period:"P4", date:"2025-07-15", periodStart:"2025-06-01", periodEnd:"2025-07-15", activeHrs:380,  avgTemp:22.5, stackTemp:27.7, avgRH:70, voc:18.2, pah:5369.0, charges:65,  p1Charges:38, p2Charges:27,  sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P5", date:"2025-11-06", periodStart:"2025-08-01", periodEnd:"2025-11-06", activeHrs:420,  avgTemp:9.5,  stackTemp:19.5, avgRH:80, voc:8.4,  pah:586.0,  charges:72,  p1Charges:42, p2Charges:30,  sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P6", date:"2025-12-18", periodStart:"2025-08-01", periodEnd:"2025-12-18", activeHrs:890,  avgTemp:10.2, stackTemp:20.0, avgRH:83, voc:28.0, pah:712.0,  charges:152, p1Charges:89, p2Charges:63,  sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P7", date:"2026-03-14", periodStart:"2026-01-12", periodEnd:"2026-03-14", activeHrs:1387, avgTemp:6.1,  stackTemp:17.5, avgRH:85, voc:5.9,  pah:340.0,  charges:237, p1Charges:138, p2Charges:99, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P8", report:"JOB-2865", date:"2026-06-02", periodStart:"2026-03-20", periodEnd:"2026-06-02", bedId:"Bed 5", activeHrs:1495, avgTemp:11.6, stackTemp:24.8, avgRH:78, voc:105, pah:295, charges:241, p1Charges:141, p2Charges:100, measuredFlow_m3hr:9884, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P9", report:"JOB-2963", date:"2026-07-14", periodStart:"2026-06-05", periodEnd:"2026-07-14", bedId:"Bed 6", bedDay:39, activeHrs:846, activeHrsEstimated:true, avgTemp:19.0, stackTemp:25.3, avgRH:69, voc:44.6, pah:144, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:3589, sameCarbon:false, dropletFalloutObserved:null,
+  { period:"P3", creoT:1734.0, workingDays:177, date:"2025-05-20", periodStart:"2024-09-01", periodEnd:"2025-05-20", activeHrs:1100, avgTemp:16.0, stackTemp:26.0, avgRH:74, voc:55.6, pah:2475.0, charges:188, p1Charges:110, p2Charges:78, sameCarbon:true,  dropletFalloutObserved:null },
+  { period:"P4", creoT:409.8, workingDays:32, date:"2025-07-15", periodStart:"2025-06-01", periodEnd:"2025-07-15", activeHrs:380,  avgTemp:22.5, stackTemp:27.7, avgRH:70, voc:18.2, pah:5369.0, charges:65,  p1Charges:38, p2Charges:27,  sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P5", creoT:765.4, workingDays:69, date:"2025-11-06", periodStart:"2025-08-01", periodEnd:"2025-11-06", activeHrs:420,  avgTemp:9.5,  stackTemp:19.5, avgRH:80, voc:8.4,  pah:586.0,  charges:72,  p1Charges:42, p2Charges:30,  sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P6", creoT:1111.7, workingDays:99, date:"2025-12-18", periodStart:"2025-08-01", periodEnd:"2025-12-18", activeHrs:890,  avgTemp:10.2, stackTemp:20.0, avgRH:83, voc:28.0, pah:712.0,  charges:152, p1Charges:89, p2Charges:63,  sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P7", creoT:606.3, workingDays:44, date:"2026-03-14", periodStart:"2026-01-12", periodEnd:"2026-03-14", activeHrs:1387, avgTemp:6.1,  stackTemp:17.5, avgRH:85, voc:5.9,  pah:340.0,  charges:237, p1Charges:138, p2Charges:99, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P8", creoT:1050.5, workingDays:56, report:"JOB-2865", date:"2026-06-02", periodStart:"2026-03-20", periodEnd:"2026-06-02", bedId:"Bed 5", activeHrs:1495, avgTemp:11.6, stackTemp:24.8, avgRH:78, voc:105, pah:295, charges:241, p1Charges:141, p2Charges:100, measuredFlow_m3hr:9884, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P9", creoT:613.5, workingDays:28, report:"JOB-2963", date:"2026-07-14", periodStart:"2026-06-05", periodEnd:"2026-07-14", bedId:"Bed 6", bedDay:39, activeHrs:846, activeHrsEstimated:true, avgTemp:19.0, stackTemp:25.3, avgRH:69, voc:44.6, pah:144, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:3589, sameCarbon:false, dropletFalloutObserved:null,
     flowAnomalous:true,
     excludeFromFlowCalcs:true,
     anomalyNote:"Stack discharge flow 3,589 m3/hr on test day vs ~9,000-10,000 m3/hr at P8 and P10-P14. Same pattern as P2. Cause not identified; queried with Cura Terrae. Excluded from flow-dependent calculations. Retained in VOC and PAH regression with this flag." },
-  { period:"P10", report:"JOB-3036", date:"2026-07-29", periodStart:"2026-06-05", periodEnd:"2026-07-29", bedId:"Bed 6", bedDay:54, activeHrs:1172, activeHrsEstimated:true, avgTemp:18.9, stackTemp:33.0, avgRH:68, voc:138, pah:2116, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9464, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P11", report:"JOB-3082", date:"2026-08-13", periodStart:"2026-06-05", periodEnd:"2026-08-13", bedId:"Bed 6", bedDay:69, activeHrs:1497, activeHrsEstimated:true, avgTemp:19.2, stackTemp:31.0, avgRH:66, voc:166, pah:7950, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:10033, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P12", report:"JOB-3083 R1", date:"2026-08-25", periodStart:"2026-06-05", periodEnd:"2026-08-25", bedId:"Bed 6", bedDay:81, activeHrs:1758, activeHrsEstimated:true, avgTemp:18.9, stackTemp:25.5, avgRH:67, voc:109, pah:1300, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P13", report:"JOB-3083 R2", date:"2026-08-26", periodStart:"2026-08-25", periodEnd:"2026-08-26", bedId:"Bed 7", bedDay:1, activeHrs:22, activeHrsEstimated:true, avgTemp:19.6, stackTemp:28.8, avgRH:74, voc:0.093, pah:53.5, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P14", report:"JOB-3146", date:"2026-09-24", periodStart:"2026-08-25", periodEnd:"2026-09-24", bedId:"Bed 7", bedDay:30, activeHrs:651, activeHrsEstimated:true, avgTemp:17.2, stackTemp:21.0, avgRH:75, voc:1.0, pah:33.8, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9606, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P10", creoT:764.6, workingDays:39, report:"JOB-3036", date:"2026-07-29", periodStart:"2026-06-05", periodEnd:"2026-07-29", bedId:"Bed 6", bedDay:54, activeHrs:1172, activeHrsEstimated:true, avgTemp:18.9, stackTemp:33.0, avgRH:68, voc:138, pah:2116, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9464, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P11", creoT:959.3, workingDays:50, report:"JOB-3082", date:"2026-08-13", periodStart:"2026-06-05", periodEnd:"2026-08-13", bedId:"Bed 6", bedDay:69, activeHrs:1497, activeHrsEstimated:true, avgTemp:19.2, stackTemp:31.0, avgRH:66, voc:166, pah:7950, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:10033, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P12", creoT:1082.8, workingDays:58, report:"JOB-3083 R1", date:"2026-08-25", periodStart:"2026-06-05", periodEnd:"2026-08-25", bedId:"Bed 6", bedDay:81, activeHrs:1758, activeHrsEstimated:true, avgTemp:18.9, stackTemp:25.5, avgRH:67, voc:109, pah:1300, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P13", creoT:15.3, workingDays:1, report:"JOB-3083 R2", date:"2026-08-26", periodStart:"2026-08-25", periodEnd:"2026-08-26", bedId:"Bed 7", bedDay:1, activeHrs:22, activeHrsEstimated:true, avgTemp:19.6, stackTemp:28.8, avgRH:74, voc:0.093, pah:53.5, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P14", creoT:289.4, workingDays:21, report:"JOB-3146", date:"2026-09-24", periodStart:"2026-08-25", periodEnd:"2026-09-24", bedId:"Bed 7", bedDay:30, activeHrs:651, activeHrsEstimated:true, avgTemp:17.2, stackTemp:21.0, avgRH:75, voc:1.0, pah:33.8, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9606, sameCarbon:false, dropletFalloutObserved:null },
 ];
 const INITIAL_CHARGES = [];
 
@@ -501,7 +510,10 @@ function calibrateVOC(stackData) {
   const v = stackData.filter(d => d.voc != null && d.activeHrs > 0 && d.sameCarbon !== true);
   if (v.length < 3) return { a: D_VOC_A, b: D_VOC_B, c: D_VOC_C, r2: null, r2_loo: null, n_folds: 0, rmse: VOC_RMSE_LOG, n: v.length, bayesC: null, bayesianActive: false, bayesianStatus: "Inactive - n < 4" };
   const effectiveHours = v.map(d=>effectiveHoursForStackRecord(d));
-  const fit = ridgeRegression(effectiveHours.map(h=>Math.log(h)), v.map(d=>d.avgTemp), v.map(d=>d.voc), 0.1);
+  // v2.1.0: the humidity term added in predictVOC is removed from the targets before fitting,
+  // so calibration and prediction use the same model (previously added at prediction only).
+  const vocHumidityAdjusted = v.map(d=>d.voc / Math.exp((1 - humidityFactor(d.avgRH)) * 0.6));
+  const fit = ridgeRegression(effectiveHours.map(h=>Math.log(h)), v.map(d=>d.avgTemp), vocHumidityAdjusted, 0.1);
   if (!fit) return { a: D_VOC_A, b: D_VOC_B, c: D_VOC_C, r2: null, r2_loo: null, n_folds: 0, rmse: VOC_RMSE_LOG, n: v.length, bayesC: null, bayesianActive: false };
   const resids = v.map(d => {
     const hf = humidityFactor(d.avgRH), hp = (1-hf)*0.6;
@@ -509,7 +521,7 @@ function calibrateVOC(stackData) {
     return (fit.a*Math.log(effectiveHrs) + fit.b*d.avgTemp + fit.c + hp) - Math.log(d.voc);
   });
   const rmse = Math.sqrt(resids.reduce((a,e)=>a+e*e,0)/resids.length);
-  const looResult = looCV(effectiveHours.map(h=>Math.log(Math.max(h, 1))), v.map(d=>d.avgTemp), v.map(d=>d.voc), 0.1);
+  const looResult = looCV(effectiveHours.map(h=>Math.log(Math.max(h, 1))), v.map(d=>d.avgTemp), vocHumidityAdjusted, 0.1);
   // Bayesian sequential update on intercept c (most uncertain coefficient).
   // Prior: N(fit.c, (rmse * 1.5)^2). Noise sigma: rmse.
   const priorSigmaSq = (rmse * 1.5) * (rmse * 1.5);
@@ -573,6 +585,97 @@ function calibratePAH(stackData) {
   const pahBayesC = bayesianUpdateNormal(fit.c, pahPriorSigmaSq, pahLnObs, pahLnPred, pahNoiseSigmaSq);
   const pahBayesianActive = v.length >= 4;
   return { a: fit.a, b: fit.b, c: fit.c, r2: fit.r2, rmse, n: v.length, freshOnly: fresh.length>=3, bayesC: pahBayesC, bayesianActive: pahBayesianActive, bayesianStatus: pahBayesianActive ? "Active - informational only" : "Inactive - n < 4" };
+}
+
+// ============================================================
+// v2.1.0 TRIAL MODEL - creosote throughput
+// ln(VOC) = a*ln(creosote tonnes since changeout) + b*stackTemp + c
+// ln(PAH) = a*stackTemp + b*ln(creosote tonnes) + c
+// Runs alongside the operative run-hours model; it does not drive scheduling.
+// Tonnes are tank-delta usage from the Creosote Tank and Flash Point Log Daily Log,
+// measured the same way for every period (the run-hours basis changed in 2026).
+// Uncertainty uses the leave-one-out RMSE in log space (prediction error on unseen tests).
+// ============================================================
+function looLogRMSE(x1arr, x2arr, yarr, lam) {
+  const n = yarr.length;
+  if (n < 4) return null;
+  let ss = 0, k = 0;
+  for (let i = 0; i < n; i++) {
+    const a1 = [], a2 = [], ay = [];
+    for (let j = 0; j < n; j++) if (j !== i) { a1.push(x1arr[j]); a2.push(x2arr[j]); ay.push(yarr[j]); }
+    const f = ridgeRegression(a1, a2, ay, lam);
+    if (!f) continue;
+    const e = (f.a * x1arr[i] + f.b * x2arr[i] + f.c) - Math.log(Math.max(yarr[i], 0.01));
+    ss += e * e; k += 1;
+  }
+  return k ? Math.sqrt(ss / k) : null;
+}
+function calibrateCreoModel(stackData) {
+  const v = (stackData || []).filter(d => d.sameCarbon !== true && d.creoT > 0 && d.stackTemp != null);
+  const vv = v.filter(d => d.voc != null && d.voc > 0);
+  const pp = v.filter(d => d.pah != null && d.pah > 0);
+  if (vv.length < 4 || pp.length < 4) return { ready:false, n:vv.length };
+  const voc = ridgeRegression(vv.map(d=>Math.log(d.creoT)), vv.map(d=>d.stackTemp), vv.map(d=>d.voc), 0.1);
+  const pah = ridgeRegression(pp.map(d=>d.stackTemp), pp.map(d=>Math.log(d.creoT)), pp.map(d=>d.pah), 0.1);
+  if (!voc || !pah) return { ready:false, n:vv.length };
+  const vocLoo = looLogRMSE(vv.map(d=>Math.log(d.creoT)), vv.map(d=>d.stackTemp), vv.map(d=>d.voc), 0.1);
+  const pahLoo = looLogRMSE(pp.map(d=>d.stackTemp), pp.map(d=>Math.log(d.creoT)), pp.map(d=>d.pah), 0.1);
+  return { ready:true, voc, pah, vocLoo, pahLoo, n:vv.length, nPah:pp.length, maxT:Math.max(...vv.map(d=>d.creoT)) };
+}
+// Same leave-one-out log RMSE for the operative run-hours model, so the two can be compared like for like.
+function operativeLooLogRMSE(stackData) {
+  const v = (stackData || []).filter(d => d.voc != null && d.activeHrs > 0 && d.sameCarbon !== true);
+  const p = (stackData || []).filter(d => d.pah != null && d.sameCarbon === false && d.stackTemp != null && d.activeHrs > 0);
+  const adj = v.map(d=>d.voc / Math.exp((1 - humidityFactor(d.avgRH)) * 0.6));
+  return {
+    voc: looLogRMSE(v.map(d=>Math.log(Math.max(effectiveHoursForStackRecord(d), 1))), v.map(d=>d.avgTemp), adj, 0.1),
+    pah: looLogRMSE(p.map(d=>d.stackTemp), p.map(d=>Math.log(Math.max(effectiveHoursForStackRecord(d), 1))), p.map(d=>d.pah), 0.1),
+  };
+}
+function predictVOCCreo(tonnes, stackTemp, cm) {
+  return Math.exp(cm.voc.a * Math.log(Math.max(tonnes, 0.5)) + cm.voc.b * stackTemp + cm.voc.c);
+}
+function predictPAHCreo(stackTemp, tonnes, cm) {
+  return Math.exp(cm.pah.a * stackTemp + cm.pah.b * Math.log(Math.max(tonnes, 0.5)) + cm.pah.c);
+}
+// Creosote used on the current bed and the forward usage rate.
+// Prefers the synced Daily Log; falls back to the rate in Settings.
+function creosoteBedState(dailyLog, lastChangeout, settings, today) {
+  const rows = (dailyLog || []).filter(r => r && r.date && r.usageKg != null).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const start = String(lastChangeout).slice(0,10);
+  const todayIso = isoDateFromDate(today);
+  const fallbackRate = settings.creoRateTPerDay != null ? settings.creoRateTPerDay : 11;
+  const daysOnBed = Math.max(0, daysBetween(start, today));
+  const last = rows.length ? rows[rows.length - 1] : null;
+  const logCurrent = last && daysBetween(last.date, today) <= 4 && rows.some(r => r.date <= start);
+  if (!logCurrent) {
+    return { tonnes: fallbackRate * daysOnBed, rate: fallbackRate, source: "estimate", note: "estimated at " + fallbackRate + " t/day (Settings) - creosote log not synced" };
+  }
+  const usedKg = rows.filter(r => r.date > start && r.date <= todayIso).reduce((a, r) => a + Math.max(0, r.usageKg), 0);
+  const from30 = isoDateFromDate(addDays(today, -30));
+  const kg30 = rows.filter(r => r.date > from30 && r.date <= todayIso).reduce((a, r) => a + Math.max(0, r.usageKg), 0);
+  const rate = kg30 > 0 ? kg30 / 1000 / 30 : fallbackRate;
+  return { tonnes: usedKg / 1000, rate, source: "log", note: "from the creosote log; forward rate " + rate.toFixed(1) + " t/day (last 30 days)" };
+}
+// Day-by-day forecast of the trial model at Boston climatology.
+function forecastCreo(startDate, startTonnes, ratePerDay, cm, maxDays) {
+  const horizon = maxDays || 365;
+  let t = startTonnes, vocBreach = null, pahBreach = null;
+  for (let day = 0; day <= horizon; day++) {
+    const date = addDays(startDate, day);
+    const stack = estimateStackTemp(BOSTON_MONTHLY_TEMPS[date.getMonth()]);
+    const voc = predictVOCCreo(t, stack, cm);
+    const pah = predictPAHCreo(stack, t, cm);
+    if (!vocBreach && voc >= VOC_ELV) vocBreach = { day, date:isoDateFromDate(date), tonnes:t, value:voc };
+    if (!pahBreach && pah >= PAH_ELV) pahBreach = { day, date:isoDateFromDate(date), tonnes:t, value:pah };
+    if (vocBreach && pahBreach) break;
+    t += ratePerDay;
+  }
+  let binding = null;
+  if (vocBreach && pahBreach) binding = vocBreach.day <= pahBreach.day ? { type:"VOC", row:vocBreach } : { type:"PAH", row:pahBreach };
+  else if (vocBreach) binding = { type:"VOC", row:vocBreach };
+  else if (pahBreach) binding = { type:"PAH", row:pahBreach };
+  return { vocBreach, pahBreach, binding };
 }
 
 // predictVOC: calibrated under Config A fan configuration (9,000 m3/hr nominal).
@@ -4991,6 +5094,7 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
         <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
           <Input label="Typical Ambient Temp (C)" type="number" step="0.5" value={settings.typicalTempC} onChange={v=>onChange("typicalTempC",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
           <Input label="Typical RH (%)" type="number" value={settings.typicalRH} onChange={v=>onChange("typicalRH",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
+          <Input label="Creosote use (t/day, trial model fallback)" type="number" step="0.5" value={settings.creoRateTPerDay ?? 11} onChange={v=>onChange("creoRateTPerDay",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
         </div>
         <label style={{ display:"flex", gap:8, alignItems:"center", fontSize:12, color:C.ink, fontWeight:700 }}>
           <input type="checkbox" checked={!!settings.useConservativeRH} onChange={e=>onChange("useConservativeRH",e.target.checked)} disabled={!canEdit} />
@@ -5180,7 +5284,7 @@ function LogBars({ tests, field, limit, lo, hi, unit }) {
   );
 }
 
-function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, ambient, ambientSource, rh, creoDailyLog, creoDeliveries, platformMeta, onNavigate }) {
+function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, ambient, ambientSource, rh, creoDailyLog, creoDeliveries, platformMeta, onNavigate, creoModel, creoBed, opLoo }) {
   const today = useMemo(()=>new Date(), []);
   const { fc, binding, bufferDays } = useMemo(()=>forecastFrom(today, activeHrs, settings, vocC, pahC), [today, activeHrs, settings, vocC, pahC]);
   const outlook = useMemo(()=>seasonOutlook(settings, vocC), [settings, vocC]);
@@ -5317,6 +5421,8 @@ function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, am
         </Panel>
       </div>
 
+      <ModelComparisonPanel today={today} opBinding={binding} opFc={fc} bufferDays={bufferDays} opLoo={opLoo} cm={creoModel} creoBed={creoBed} onNavigate={onNavigate} />
+
       <Panel>
         <PanelTitle title="Season risk outlook" sub="Model VOC safe window for a fresh bed starting each month, and PAH temperature risk, at Boston climate averages." right={<div style={{ display:"flex", gap:14, flexWrap:"wrap" }}><LegendDot tone="ok" label="Low" /><LegendDot tone="warn" label="Moderate" /><LegendDot tone="bad" label="High" /></div>} />
         <div style={{ overflowX:"auto" }}>
@@ -5362,8 +5468,60 @@ function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, am
   );
 }
 
-function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs }) {
+function ModelComparisonPanel({ today, opBinding, opFc, bufferDays, opLoo, cm, creoBed, onNavigate }) {
+  if (!cm || !cm.ready) return null;
+  const trial = forecastCreo(today, creoBed.tonnes, creoBed.rate, cm, 365);
+  const tb = trial.binding;
+  const opDay = opBinding.row ? opBinding.row.day : null;
+  const testDay = opDay != null ? Math.max(0, opDay - bufferDays) : 30;
+  const testDate = addDays(today, testDay);
+  const opRow = opFc.rows[Math.min(testDay, opFc.rows.length - 1)];
+  const opAtTest = opRow ? opRow.vocMid : null;
+  const tonnesAtTest = creoBed.tonnes + creoBed.rate * testDay;
+  const trialAtTest = predictVOCCreo(tonnesAtTest, estimateStackTemp(BOSTON_MONTHLY_TEMPS[testDate.getMonth()]), cm);
+  const gap = opDay != null && tb ? tb.row.day - opDay : null;
+  const beyond = tb && tb.row.tonnes > cm.maxT;
+  const col = (title, tag, tone, rows) => (
+    <div style={{ background:C.surface2, borderRadius:12, padding:"16px 18px", minWidth:0 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+        <div style={{ fontWeight:600, fontSize:14 }}>{title}</div><Chip tone={tone}>{tag}</Chip>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:12, marginTop:12 }}>
+        {rows.map(r => <div key={r[0]}><Label>{r[0]}</Label><div style={{ fontFamily:MONO, fontSize:18, fontWeight:600, marginTop:4, color:r[2] || C.ink }}>{r[1]}</div></div>)}
+      </div>
+    </div>
+  );
+  return (
+    <Panel>
+      <PanelTitle title="Model comparison - current bed" sub="The operative run-hours model drives scheduling. The creosote-throughput model runs alongside it on trial until stack tests confirm it." right={<button type="button" onClick={()=>onNavigate("stack", "compliance")} style={{ minHeight:38, padding:"0 14px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.rund, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Model fit</button>} />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))", gap:16 }}>
+        {col("Run hours", "Operative", "accent", [
+          ["Forecast limit", opBinding.row ? fmtDateShort(opBinding.row.date) : "None in 12 months"],
+          ["Uncertainty (unseen tests)", opLoo.voc != null ? "x" + Math.exp(opLoo.voc).toFixed(1) : "--"],
+          ["Predicts at " + fmtDayMonth(testDate) + " test", opAtTest != null ? opAtTest.toFixed(1) + " mg/m3" : "--", opAtTest != null && opAtTest >= VOC_ELV ? C.red : null],
+          ["Bed loading so far", Math.round(opFc.rows[0] ? opFc.rows[0].activeHrs : 0).toLocaleString("en-GB") + " h"],
+        ])}
+        {col("Creosote throughput", "Trial", "warn", [
+          ["Forecast limit", tb ? fmtDateShort(tb.row.date) : "None in 12 months"],
+          ["Uncertainty (unseen tests)", cm.vocLoo != null ? "x" + Math.exp(cm.vocLoo).toFixed(1) : "--"],
+          ["Predicts at " + fmtDayMonth(testDate) + " test", trialAtTest.toFixed(1) + " mg/m3", trialAtTest >= VOC_ELV ? C.red : null],
+          ["Creosote so far", Math.round(creoBed.tonnes).toLocaleString("en-GB") + " t"],
+        ])}
+      </div>
+      <div style={{ fontSize:12, color:C.muted, marginTop:12, lineHeight:1.5 }}>
+        {gap != null ? (gap > 0 ? "The trial model gives this bed " + gap + " more days. " : gap < 0 ? "The trial model gives this bed " + (-gap) + " fewer days. " : "Both models agree on the date. ") : ""}
+        The {fmtDayMonth(testDate)} stack test separates them: a VOC result near {opAtTest != null ? opAtTest.toFixed(0) : "--"} mg/m3 supports the run-hours model, near {trialAtTest.toFixed(0)} mg/m3 the throughput model.
+        {" "}Creosote use {creoBed.note}.
+        {beyond ? " The trial date lies beyond the largest throughput yet tested (" + Math.round(cm.maxT).toLocaleString("en-GB") + " t), so it is an extrapolation: do not defer a changeout on it without a confirming test." : ""}
+      </div>
+    </Panel>
+  );
+}
+
+function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoModel, creoBed }) {
   const today = useMemo(()=>new Date(), []);
+  const [basis, setBasis] = useState("hours");
+  const trialReady = !!(creoModel && creoModel.ready);
   const plan = useMemo(()=>{
     const windowStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const windowEnd = new Date(today.getFullYear() + 1, today.getMonth(), 1);
@@ -5371,15 +5529,23 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs }) {
     let start = new Date(String(lastChangeout).slice(0, 10) + "T00:00:00");
     let simStart = today;
     let hrs = activeHrs;
+    let tonnes = creoBed ? creoBed.tonnes : 0;
+    const bufferForTrial = settings.preTestBufferDays ?? 14;
     for (let i = 0; i < 16; i++) {
-      const res = forecastFrom(simStart, hrs, settings, vocC, pahC);
+      let res;
+      if (basis === "creo" && trialReady) {
+        const tf = forecastCreo(simStart, tonnes, creoBed.rate, creoModel, 365);
+        res = { binding: tf.binding ? { type:tf.binding.type, row:tf.binding.row } : { type:"None", row:null }, bufferDays: bufferForTrial };
+      } else {
+        res = forecastFrom(simStart, hrs, settings, vocC, pahC);
+      }
       if (!res.binding.row) { beds.push({ start, end:null, life:null, type:"None", testDate:null }); break; }
       const end = addDays(simStart, res.binding.row.day);
       const life = Math.max(1, daysBetween(start, end));
       const testDate = addDays(simStart, Math.max(0, res.binding.row.day - res.bufferDays));
       beds.push({ start, end, life, type:res.binding.type, testDate });
       if (end >= windowEnd) break;
-      start = end; simStart = end; hrs = 0;
+      start = end; simStart = end; hrs = 0; tonnes = 0;
     }
     const span = (windowEnd - windowStart) / 86400000;
     const changeouts = beds.filter(b => b.end && b.end >= today && b.end < windowEnd).length;
@@ -5392,7 +5558,7 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs }) {
     }
     const pos = d => Math.max(0, Math.min(100, (d - windowStart) / 86400000 / span * 100));
     return { beds, changeouts, months, pos, windowStart, windowEnd };
-  }, [today, lastChangeout, activeHrs, settings, vocC, pahC]);
+  }, [today, lastChangeout, activeHrs, settings, vocC, pahC, basis, trialReady, creoModel, creoBed]);
   const outlook = useMemo(()=>seasonOutlook(settings, vocC), [settings, vocC]);
   const seasons = [["Winter", [11,0,1]], ["Spring", [2,3,4]], ["Summer", [5,6,7]], ["Autumn", [8,9,10]]].map(function(s) {
     const days = Math.round(s[1].reduce((acc, m)=>acc + outlook[m].days, 0) / 3);
@@ -5408,6 +5574,15 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs }) {
         <Label>Forecast - next 12 months - model-driven, seasonal climatology</Label>
         <h1 style={{ margin:"6px 0 0", fontFamily:HEAD_FONT, fontWeight:600, fontSize:"clamp(22px, 3vw, 30px)", color:C.ink }}>{plan.changeouts} changeouts forecast in the next 12 months</h1>
       </div>
+      {trialReady ? (
+        <div style={{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:13, color:C.muted }}>Forecast basis</span>
+          {[["hours","Run hours (operative)"],["creo","Creosote throughput (trial)"]].map(b => (
+            <button key={b[0]} type="button" aria-pressed={basis === b[0]} onClick={()=>setBasis(b[0])} style={{ minHeight:36, padding:"0 14px", borderRadius:999, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:basis === b[0] ? 600 : 500, border:`1px solid ${basis === b[0] ? "transparent" : C.border}`, background:basis === b[0] ? (b[0] === "creo" ? C.amber : C.rund) : "transparent", color:basis === b[0] ? C.onAccent : C.muted }}>{b[1]}</button>
+          ))}
+          {basis === "creo" ? <span style={{ fontSize:12, color:C.amber }}>Trial model, at {creoBed.rate.toFixed(1)} t/day creosote. Not for scheduling until confirmed by stack tests.</span> : null}
+        </div>
+      ) : null}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:16 }}>
         <StatPill label="Changeouts" value={plan.changeouts} unit="" sub="single bed, no lead-lag" />
         <StatPill label="Carbon cost" value={"GBP " + (plan.changeouts * CHANGEOUT_COST_GBP / 1000).toFixed(1) + "k"} unit="" sub={plan.changeouts + " x GBP " + CHANGEOUT_COST_GBP.toLocaleString("en-GB")} />
@@ -5486,7 +5661,7 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs }) {
   );
 }
 
-function ComplianceTab({ stackData, vocC, pahC }) {
+function ComplianceTab({ stackData, vocC, pahC, creoModel, opLoo }) {
   const tests = useMemo(()=>sortedTests(stackData), [stackData]);
   const latest = tests.length ? tests[tests.length - 1] : null;
   const vocTests = tests.filter(t=>t.voc != null);
@@ -5503,6 +5678,7 @@ function ComplianceTab({ stackData, vocC, pahC }) {
   const zoneL = xPos(Math.min(breachLo, breachHi)), zoneR = xPos(Math.max(breachLo, breachHi));
   const th = { textAlign:"left", padding:"10px 12px", fontSize:11, letterSpacing:"0.08em", textTransform:"uppercase", color:C.muted, fontWeight:600, borderBottom:`1px solid ${C.border}`, whiteSpace:"nowrap" };
   const td = { padding:"10px 12px", borderBottom:`1px solid ${C.border}`, fontSize:13 };
+  const hoursFlagged = tests.filter(t => t.workingDays && t.activeHrs / t.workingDays > 24);
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
@@ -5550,13 +5726,31 @@ function ComplianceTab({ stackData, vocC, pahC }) {
             <StatPill label="Over-limit rate" value={tests.length ? Math.round((vocOver + pahOver) / Math.max(1, vocTests.length + pahTests.length) * 100) + "%" : "--"} unit="" sub="of all VOC and PAH results" />
           </div>
           <div style={{ fontSize:12, color:C.muted, marginTop:14 }}>Uncertainty is shown, not hidden. Each new certified test narrows the band and moves the forecast.</div>
+          {creoModel && creoModel.ready ? (
+            <div style={{ marginTop:16 }}>
+              <Label>Prediction error on unseen tests (leave-one-out)</Label>
+              <table style={{ width:"100%", borderCollapse:"collapse", marginTop:8 }}>
+                <thead><tr><th style={th}>Model</th><th style={th}>VOC band</th><th style={th}>PAH band</th><th style={th}>VOC fit R2</th></tr></thead>
+                <tbody>
+                  <tr><td style={td}>Run hours + ambient (operative)</td><td style={{ ...td, fontFamily:MONO }}>{opLoo.voc != null ? "x" + Math.exp(opLoo.voc).toFixed(2) : "--"}</td><td style={{ ...td, fontFamily:MONO }}>{opLoo.pah != null ? "x" + Math.exp(opLoo.pah).toFixed(2) : "--"}</td><td style={{ ...td, fontFamily:MONO }}>{vocC && vocC.r2 != null ? vocC.r2.toFixed(2) : "--"}</td></tr>
+                  <tr><td style={td}>Creosote throughput + stack temp (trial)</td><td style={{ ...td, fontFamily:MONO, color:C.teal, fontWeight:600 }}>{"x" + Math.exp(creoModel.vocLoo).toFixed(2)}</td><td style={{ ...td, fontFamily:MONO, color:C.teal, fontWeight:600 }}>{"x" + Math.exp(creoModel.pahLoo).toFixed(2)}</td><td style={{ ...td, fontFamily:MONO }}>{creoModel.voc.r2.toFixed(2)}</td></tr>
+                </tbody>
+              </table>
+              <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Lower band = better prediction of tests the model has not seen. Trial VOC: ln VOC = {creoModel.voc.a.toFixed(2)} ln(t) + {creoModel.voc.b.toFixed(3)} T_stack {creoModel.voc.c < 0 ? "-" : "+"} {Math.abs(creoModel.voc.c).toFixed(2)}, n = {creoModel.n}.</div>
+            </div>
+          ) : null}
         </Panel>
       </div>
 
+      {hoursFlagged.length ? (
+        <div style={{ padding:"14px 16px", borderRadius:12, background:TINT.amberBg, color:C.ink, fontSize:13, lineHeight:1.5 }}>
+          <b style={{ color:C.amber }}>Run-hours basis check.</b> {hoursFlagged.map(t=>t.period).join(", ")} record more than 24 active hours per working day, so their hours are not on the same basis as earlier tests (likely both plants summed, or calendar hours; P9 to P14 are estimates). Reconcile them against the charge log before the next recalibration.
+        </div>
+      ) : null}
       <Panel style={{ padding:"8px 12px 12px" }}>
         <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", minWidth:860 }}>
-            <thead><tr><th style={th}>Test</th><th style={th}>Report</th><th style={th}>Date</th><th style={th}>Bed - day</th><th style={th}>Stack C</th><th style={th}>VOC mg/m3</th><th style={th}>PAH ug/m3</th><th style={th}>Result</th></tr></thead>
+          <table style={{ width:"100%", borderCollapse:"collapse", minWidth:980 }}>
+            <thead><tr><th style={th}>Test</th><th style={th}>Report</th><th style={th}>Date</th><th style={th}>Bed - day</th><th style={th}>Creosote t</th><th style={th}>Hrs / work day</th><th style={th}>Stack C</th><th style={th}>VOC mg/m3</th><th style={th}>PAH ug/m3</th><th style={th}>Result</th></tr></thead>
             <tbody>
               {tests.slice().reverse().map(t => {
                 const vo = t.voc != null && t.voc > VOC_ELV, po = t.pah != null && t.pah > PAH_ELV;
@@ -5567,6 +5761,8 @@ function ComplianceTab({ stackData, vocC, pahC }) {
                     <td style={{ ...td, fontFamily:MONO, color:C.muted }}>{t.report || "--"}</td>
                     <td style={{ ...td, fontFamily:MONO }}>{fmtDateShort(t.date)}</td>
                     <td style={td}>{t.bedId ? t.bedId + (t.bedDay ? " - " + t.bedDay : "") : "--"}</td>
+                    <td style={{ ...td, fontFamily:MONO }}>{t.creoT != null ? Math.round(t.creoT).toLocaleString("en-GB") : "--"}</td>
+                    <td style={{ ...td, fontFamily:MONO, color:t.workingDays && t.activeHrs / t.workingDays > 24 ? C.amber : C.ink, fontWeight:t.workingDays && t.activeHrs / t.workingDays > 24 ? 600 : 400 }}>{t.workingDays ? (t.activeHrs / t.workingDays).toFixed(1) : "--"}</td>
                     <td style={{ ...td, fontFamily:MONO }}>{t.stackTemp != null ? Number(t.stackTemp).toFixed(1) : "--"}</td>
                     <td style={{ ...td, fontFamily:MONO, color:vo ? C.red : C.ink, fontWeight:vo ? 600 : 400 }}>{t.voc != null ? t.voc : "--"}</td>
                     <td style={{ ...td, fontFamily:MONO, color:po ? C.red : C.ink, fontWeight:po ? 600 : 400 }}>{t.pah != null ? Number(t.pah).toLocaleString("en-GB") : "--"}</td>
@@ -5696,6 +5892,8 @@ export default function App() {
   const currentPeriodChargeLog = useMemo(()=>filterChargeLogSince(chargeLog, lastChangeout), [chargeLog, lastChangeout]);
 
   const vocC = useMemo(()=>calibrateVOC(stackData),[stackData]);
+  const creoModel = useMemo(()=>calibrateCreoModel(stackData),[stackData]);
+  const opLoo = useMemo(()=>operativeLooLogRMSE(stackData),[stackData]);
   const pahC = useMemo(()=>calibratePAH(stackData),[stackData]);
   const appLogChargeHrs = useMemo(()=>calcActiveHrsFromLog(currentPeriodChargeLog),[currentPeriodChargeLog]);
   const appDaysSince = Math.max(0, Math.floor((new Date()-new Date(lastChangeout))/86400000));
@@ -5708,6 +5906,7 @@ export default function App() {
     return last && daysBetween(last.date, new Date()) <= 2 ? last : null;
   }, [platformState.cgb_creoDailyLog]);
   const appAmbientTemp = weather ? weather.temperature_2m : latestScadaReading ? latestScadaReading.ambientC : settings.typicalTempC;
+  const creoBed = useMemo(()=>creosoteBedState(platformState.cgb_creoDailyLog, lastChangeout, settings, new Date()), [platformState.cgb_creoDailyLog, lastChangeout, settings]);
   const appAmbientSource = weather ? "Open-Meteo live" : latestScadaReading ? "SCADA print " + latestScadaReading.date : "settings typical value";
   const appRH = settings.useConservativeRH ? 90 : (weather ? weather.relative_humidity_2m : settings.typicalRH);
   const appOperativeTemp = operativeTemp(appAmbientTemp, settings.stackTempCorrectionC ?? 10.3);
@@ -5794,9 +5993,9 @@ export default function App() {
             {platformMeta.error ? "Sync problem: " + platformMeta.error : ""}{platformMeta.error && isViewer ? " | " : ""}{isViewer ? "Read-only viewer mode" : ""}
           </div>
         ) : null}
-        {activeTab==="home"         && <HomeTab stackData={stackData} settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} ambient={appAmbientTemp} ambientSource={appAmbientSource} rh={appRH} creoDailyLog={platformState.cgb_creoDailyLog} creoDeliveries={platformState.cgb_creoDeliveries} platformMeta={platformMeta} onNavigate={navigateTo} />}
-        {activeTab==="seasonplan"   && <SeasonPlanTab settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} />}
-        {activeTab==="compliance"   && <ComplianceTab stackData={stackData} vocC={vocC} pahC={pahC} />}
+        {activeTab==="home"         && <HomeTab stackData={stackData} settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} ambient={appAmbientTemp} ambientSource={appAmbientSource} rh={appRH} creoDailyLog={platformState.cgb_creoDailyLog} creoDeliveries={platformState.cgb_creoDeliveries} platformMeta={platformMeta} onNavigate={navigateTo} creoModel={creoModel} creoBed={creoBed} opLoo={opLoo} />}
+        {activeTab==="seasonplan"   && <SeasonPlanTab settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} creoModel={creoModel} creoBed={creoBed} />}
+        {activeTab==="compliance"   && <ComplianceTab stackData={stackData} vocC={vocC} pahC={pahC} creoModel={creoModel} opLoo={opLoo} />}
         {activeTab==="dashboard"    && (
           <>
             <ProcessSchematic
