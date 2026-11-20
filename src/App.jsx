@@ -1053,6 +1053,15 @@ function Card({ children, style={} }) {
     </div>
   );
 }
+// Folds long method notes so pages stay short; the text stays available for audit.
+function Fold({ title, children }) {
+  return (
+    <details style={{ marginTop:10 }}>
+      <summary style={{ cursor:"pointer", fontSize:13, fontWeight:600, color:C.rund, padding:"6px 0", listStyle:"revert" }}>{title || "Method note"}</summary>
+      <div style={{ marginTop:6 }}>{children}</div>
+    </details>
+  );
+}
 function SectionTitle({ children }) {
   return (
     <h3 style={{
@@ -1441,7 +1450,7 @@ function usePlatformDocument(onSaved, enabled) {
         error: error.message,
       }));
     }
-  }, [applyServerDocument]);
+  }, [applyServerDocument, enabled]);
 
   useEffect(()=>{
     if (!enabled) return;
@@ -1458,7 +1467,11 @@ function usePlatformDocument(onSaved, enabled) {
         method: "PUT",
         body: JSON.stringify({ value }),
       });
-      applyServerDocument(doc);
+      // v2.3.0: only adopt the server copy once no other saves are in flight. Applying an
+      // earlier response while later edits are still pending rolled those edits back
+      // (lost records in bulk imports, reverted keystrokes in settings).
+      if (pendingSavesRef.current <= 1) applyServerDocument(doc);
+      else setPlatformMeta(prev => ({ ...prev, version: doc && doc.version ? doc.version : prev.version, updatedAt: doc && doc.updatedAt ? doc.updatedAt : prev.updatedAt }));
       if (onSaved) onSaved(new Date().toLocaleTimeString("en-GB"));
     } catch (error) {
       setPlatformMeta(prev => ({ ...prev, syncLabel: "Save failed", error: error.message }));
@@ -1653,6 +1666,7 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
         <div style={{ fontSize:10, color:vocC.bayesianActive?C.teal:C.muted, marginTop:2 }}>
           Bayes: {vocC.bayesianActive ? "Active" : "Inactive"} | {vocC.bayesianActive ? `delta c=${vocC.bayesC ? (vocC.bayesC.mean - vocC.c).toFixed(3) : "n/a"}` : `n=${vocC.n} of 4 req.`}
         </div>
+        <Fold title="What the cross-validated R2 means">
         <div style={{ fontSize:10, color:TINT.amberText, marginTop:6, padding:"7px 9px", background:TINT.amberBg, border:`1px solid ${C.amber}`, borderRadius:6, lineHeight:1.45 }}>
           {"LOO CV R2 is the leave-one-out cross-validated R2. It estimates predictive " +
           "accuracy on periods NOT used for fitting and is the primary EA-defensible " +
@@ -1662,8 +1676,9 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
           "the most influential period " +
           "cannot be predicted from the remaining " + (vocC.n - 1) + " periods -- " +
           "this is diagnostic information, not a model failure. " +
-          "LOO CV R2 stabilises as n increases; v1.9.0 has 11 independent periods."}
+          "LOO CV R2 stabilises as n increases; " + MODEL_VERSION + " has " + (vocC && vocC.n ? vocC.n : "--") + " independent periods."}
         </div>
+        </Fold>
         {(function() {
           var bayesRefPeriod = INITIAL_STACK_DATA.filter(function(d) {
             return d.sameCarbon === false && d.voc != null;
@@ -1914,6 +1929,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
             sub={"Ambient >" + pahAmbientThresh.toFixed(1) + " deg C threshold at current hours"}
           />
         </div>
+        <Fold title="How the scheduling dates are worked out">
         <div style={{ fontSize:11, color:C.muted, marginTop:8, lineHeight:1.5 }}>
           Scheduling dates are central-estimate predictions from the regression model, run day by day
           over Boston seasonal climatology (the same forecast as the Overview and Forward Forecast tabs).
@@ -1922,13 +1938,14 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
           and will differ from actual conditions. Use Forward Forecast tab for
           scenario-specific planning with live or manual temperature inputs.
         </div>
+        </Fold>
       </Card>
 
       <Card>
         <SectionTitle>Remaining Life to Failure</SectionTitle>
         <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-          <StatPill label="VOC Safe Window" value={vocWindow.toLocaleString()} unit="hrs"
-            color={C.blue} sub={`At ambient ${ambientTemp.toFixed(1)}C, RH${rh.toFixed(0)}%, nf=${(nf*100).toFixed(0)}%`} />
+          <StatPill label="VOC Safe Window" value={(vocRow ? Math.round(vocRow.activeHrs) : vocWindow).toLocaleString()} unit="hrs"
+            color={C.blue} sub={vocRow ? `Bed total to VOC limit on the seasonal forecast (${vocWindow.toLocaleString()} hrs if ${ambientTemp.toFixed(1)}C held all year)` : `At ambient ${ambientTemp.toFixed(1)}C, RH${rh.toFixed(0)}%, nf=${(nf*100).toFixed(0)}%`} />
           <StatPill label="Hours Remaining" value={remainHrs.toLocaleString()} unit="hrs"
             color={remainHrs<200?C.red:remainHrs<500?C.amber:C.teal}
             sub={`~${remainDays} days at ${(settings.utilisationRate*100).toFixed(0)}% util`} />
@@ -1949,6 +1966,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
             Rolling charge rate (28d): {chargeRatePer28d.toFixed(1)} charges/day | At this rate, {chargesRemaining} remaining charges = ~{chargesRemaining>0?(chargesRemaining/chargeRatePer28d).toFixed(0):0} days to failure
           </div>
         )}
+        <Fold title="Safe window and the Wheeler-Jonas reference">
         <div style={{
           marginTop:10,
           padding:"9px 13px",
@@ -1962,10 +1980,13 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
           <strong style={{ color:C.ink }}>Compliance scheduling uses the VOC Safe Window figure only.</strong>
           {" "}The Wheeler-Jonas theoretical maximum is a steady-state upper bound derived from adsorption theory (Dubinin-Radushkevich/Polanyi). It has no calibrated relationship to any observed breakthrough event in the P1-P14 dataset and consistently exceeds the regression-derived safe window by a large margin. It is shown for engineering reference only and must not be used as the basis for carbon changeout scheduling or stack test deferral decisions.
         </div>
+        </Fold>
+        <Fold title="Wheeler-Jonas theoretical maximum (reference only)">
         <div style={{ marginTop:10, padding:"10px 14px", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:7, fontSize:11, color:C.muted, lineHeight:1.6 }}>
           Wheeler-Jonas theoretical maximum (engineering reference only): {wjBedLife.toLocaleString()} hrs - not a compliance limit. This figure has no calibrated relationship to any P1-P14 breakthrough observation and consistently exceeds the regression-derived safe window. It must not be used as the basis for carbon changeout scheduling or stack test deferral.
           {latestCarbonBatch ? ` Current carbon batch ref: ${latestCarbonBatch.batchRef || latestCarbonBatch.date || "latest batch"} | iodine ${latestCarbonBatch.iodineMgG != null ? latestCarbonBatch.iodineMgG : "--"} mg/g | density ${latestCarbonBatch.densityKgM3 != null ? latestCarbonBatch.densityKgM3 : "--"} kg/m3.` : " No live carbon batch record available; default carbon properties applied."}
         </div>
+        </Fold>
       </Card>
 
       <Card>
@@ -2046,12 +2067,14 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
           <Input label="Logged Downtime This Period (hrs)" type="number" min={0}
             value={downtimeHrs} onChange={onDowntime} style={{ flex:1, minWidth:180, marginBottom:0 }} disabled={!canEdit} />
         </div>
+        <Fold title="About fan running hours">
         <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
           Fan running hours are auto-calculated as days since changeout x 24 hrs, minus
           logged downtime. Log any period when the extraction system was offline
           (maintenance, plant shutdown, power failure). Do not include normal operational
           pauses between charges.
         </div>
+        </Fold>
         {!canEdit ? <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>Viewer mode: downtime entry is locked.</div> : null}
       </Card>
     </div>
@@ -2084,7 +2107,7 @@ function parseChargeCsvText(text) {
       errors.push(`Line ${lineNo + 2}: negative duration skipped`);
       return;
     }
-    ready.push({ id:Date.now()+Math.floor(Math.random()*10000)+lineNo, date, type, count, durationHrs:Number.isFinite(durationHrs)?durationHrs:null, notes:notesIdx >= 0 ? cols[notesIdx] || "" : "", source:"csv" });
+    ready.push({ id:"csv-" + Date.now().toString(36) + "-" + lineNo + "-" + Math.random().toString(36).slice(2, 8), date, type, count, durationHrs:Number.isFinite(durationHrs)?durationHrs:null, notes:notesIdx >= 0 ? cols[notesIdx] || "" : "", source:"csv" });
   });
   return { ready, errors };
 }
@@ -2196,7 +2219,7 @@ function parseTestoCsvText(text) {
   return { rows: rows, errors: errors, rawCount: rawRows.length };
 }
 
-function ChargeCyclesTab({ chargeLog, onAddCharge, onDeleteCharge, lastChangeout, settings, vocC, canEdit }) {
+function ChargeCyclesTab({ chargeLog, onAddCharge, onAddCharges, onDeleteCharge, lastChangeout, settings, vocC, canEdit }) {
   const [form, setForm] = useState({ date:new Date().toISOString().slice(0,10), type:"plant1", count:1, durationHrs:"", notes:"" });
   const [csvPreview, setCsvPreview] = useState(null);
   const [csvStatus, setCsvStatus] = useState("");
@@ -2346,7 +2369,7 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onDeleteCharge, lastChangeout
             </div>
             {csvPreview.errors.length > 0 && <div style={{ marginTop:8, fontSize:11, color:C.red }}>{csvPreview.errors.join(" | ")}</div>}
             <div style={{ marginTop:10, display:"flex", gap:8 }}>
-              <Btn onClick={()=>{csvPreview.ready.forEach(onAddCharge); const p1=csvPreview.ready.filter(r=>r.type==="plant1").reduce((s,r)=>s+r.count,0); const p2=csvPreview.ready.filter(r=>r.type==="plant2").reduce((s,r)=>s+r.count,0); const th=csvPreview.ready.reduce((s,r)=>s+(r.durationHrs||(r.type==="plant1"?P1_AVG_HRS:P2_AVG_HRS))*r.count,0); setCsvStatus(`Imported ${csvPreview.ready.length} charges (${p1} Plant 1, ${p2} Plant 2, ${th.toFixed(1)} active hrs)`); setCsvPreview(null);}} variant="rund" disabled={!canEdit}>Import All</Btn>
+              <Btn onClick={()=>{onAddCharges(csvPreview.ready); const p1=csvPreview.ready.filter(r=>r.type==="plant1").reduce((s,r)=>s+r.count,0); const p2=csvPreview.ready.filter(r=>r.type==="plant2").reduce((s,r)=>s+r.count,0); const th=csvPreview.ready.reduce((s,r)=>s+(r.durationHrs||(r.type==="plant1"?P1_AVG_HRS:P2_AVG_HRS))*r.count,0); setCsvStatus(`Imported ${csvPreview.ready.length} charges (${p1} Plant 1, ${p2} Plant 2, ${th.toFixed(1)} active hrs)`); setCsvPreview(null);}} variant="rund" disabled={!canEdit}>Import All</Btn>
               <Btn onClick={()=>setCsvPreview(null)} variant="ghost">Cancel</Btn>
             </div>
           </div>
@@ -2578,7 +2601,7 @@ function parseStackPdfText(rawText, nextPeriod) {
 // ============================================================
 // STACK TESTS TAB
 // ============================================================
-function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchiveDocuments, canEdit }) {
+function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchiveDocuments, canEdit, lastChangeout }) {
   const [form, setForm] = useState({ period:"", date:"", activeHrs:"", avgTemp:"", stackTemp:"", avgRH:"", voc:"", pah:"", charges:"", p1Charges:"", p2Charges:"", flowRate_m3hr:"", dropletFalloutObserved:"" });
   const [pdfStatus, setPdfStatus] = useState("");
   const [pdfImporting, setPdfImporting] = useState(false);
@@ -2676,7 +2699,7 @@ function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchi
             {pdfImporting ? pdfStatus : "Drag MCERTS stack test PDF here or browse"}
           </div>
           <input type="file" accept=".pdf" id="stackPdfFile" disabled={!canEdit} style={{ display:"none" }} onChange={e=>handleStackPdf(e.target.files[0])} />
-          <label htmlFor="stackPdfFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse workbook</label>
+          <label htmlFor="stackPdfFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse PDF</label>
           {pdfStatus && <div style={{ fontSize:12, color:pdfImporting?C.amber:pdfStatus.startsWith("Import failed")||pdfStatus.startsWith("PDF files")?C.red:C.teal, marginTop:10 }}>{pdfStatus}</div>}
         </div>
         <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
@@ -2715,6 +2738,7 @@ function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchi
           </div>
         )}
         <Btn onClick={handleAdd} variant="rund" disabled={!canEdit}>Add and Recalibrate Both Models</Btn>
+        <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>Tests dated on or after {lastChangeout} are recorded against the current bed (changed {lastChangeout}), with creosote used since the changeout taken from the creosote log.</div>
         <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>Stack temp from MCERTS report header. Critical for PAH calibration - read from test certificate where available.</div>
       </Card>
 
@@ -2801,8 +2825,8 @@ function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
       <Card>
         <SectionTitle>Creosote Supply and Usage</SectionTitle>
         <div style={{ fontSize:12, color:C.muted }}>
-          No data synced yet. Deliveries and SCADA tank readings arrive from the site's Creosote Tank and Flash Point Log
-          via the creosote sync task on the site PC (scripts/install-creosote-sync-task.ps1).
+          No creosote data yet. Load the Creosote Tank and Flash Point Log with Load creosote log (Excel) above,
+          or set up the automatic sync from the site PC (scripts/install-creosote-sync-task.ps1).
         </div>
       </Card>
     );
@@ -3072,9 +3096,11 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
             color={avgCrystallisation!=null?C.blue:C.muted}
             sub="CoA mean" />
         </div>
+        <Fold title="CoA naphthalene vs the WJ vapour fraction">
         <div style={{ fontSize:12, color:C.muted, marginTop:10 }}>
           IMPORTANT: CoA naphthalene % (bulk liquid mass fraction) and the WJ vapour-phase TVOC fraction are categorically different quantities and must not be conflated. The WJ fraction is calibrated from MCERTS stack test data (Stack Tests tab) - it represents the measured vapour-phase naphthalene fraction at the carbon bed inlet. CoA liquid naphthalene represents bulk tank composition before volatilisation, ductwork condensation, and demister separation occur. A Raoult scaling factor cannot bridge these two measurements reliably for a complex multi-component creosote matrix. CoA data is used here for batch consistency monitoring only. The WJ fraction setting is governed solely by MCERTS certified stack test evidence.
         </div>
+        </Fold>
         <div style={{ marginTop:14 }}>
           <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:5 }}>
             WJ Naphthalene/TVOC Fraction: {wjFrac.toFixed(1)}%
@@ -3087,6 +3113,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
             <span>30% (below winter ref)</span><span>53% (plant calib. - operative)</span><span>70% (above range)</span>
           </div>
         </div>
+        <Fold title="Seasonal naphthalene fraction reference (engineering guidance)">
         <div style={{
           marginTop: 16,
           padding: "12px 14px",
@@ -3176,6 +3203,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
             Operative setting: 53% (plant-calibrated from P1-P8 MCERTS data). This is the correct value for compliance scheduling and EA audit purposes. Seasonal values are engineering reference only. Source: Heikkilaen (1987) 45% literature default; plant calibration P1-P8; vapour pressure analysis of Type C creosote at process temperatures.
           </div>
         </div>
+        </Fold>
       </Card>
 
       <Card>
@@ -3255,7 +3283,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
           <Input label="Naphthalene %" type="number" step="0.01" value={form.naphthalene} onChange={v=>setForm(f=>({...f,naphthalene:v}))} style={{ flex:"1 1 100px" }} />
           <Input label="B(a)P ppm" type="number" step="0.01" value={form.bap} onChange={v=>setForm(f=>({...f,bap:v}))} style={{ flex:"1 1 100px" }} />
         </div>
-        <Btn onClick={()=>{if(!form.date||!form.certNo)return;onAdd({...form,flashpoint:parseFloat(form.flashpoint)||null,crystallisation:parseFloat(form.crystallisation)||null,naphthalene:parseFloat(form.naphthalene)||null,bap:parseFloat(form.bap)||null});setForm({date:"",certNo:"",flashpoint:"",crystallisation:"",naphthalene:"",bap:""});}} variant="rund">Add Entry</Btn>
+        <Btn onClick={()=>{if(!form.date||!form.certNo)return;onAdd({...form,flashpoint:parseFloat(form.flashpoint)||null,crystallisation:parseFloat(form.crystallisation)||null,naphthalene:parseFloat(form.naphthalene)||null,bap:parseFloat(form.bap)||null});setForm({date:"",certNo:"",flashpoint:"",crystallisation:"",naphthalene:"",bap:""});}} variant="rund" disabled={!canEdit}>Add Entry</Btn>
       </Card>
 
       <CreosoteSupplyCard deliveries={creoDeliveries} dailyLog={creoDailyLog} importStatus={creoImportStatus} />
@@ -3416,7 +3444,10 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
       </Card>
       <Card>
         <SectionTitle>VOC Model Architecture</SectionTitle>
-        <ModelArchitectureDetail vocC={vocC} pahC={pahC} settings={settings} />
+        <div style={{ fontSize:13, color:C.muted }}>Operative VOC model: ridge regression of ln(VOC) on ln(effective active hours) and ambient temperature, with a humidity term. PAH model: ln(PAH) on stack temperature and ln(effective active hours). Trial model: creosote throughput and stack temperature (see Stack Tests, Compliance).</div>
+        <Fold title="Full model specification and caveats">
+          <ModelArchitectureDetail vocC={vocC} pahC={pahC} settings={settings} />
+        </Fold>
         <div style={{ marginTop:10, fontSize:11, color:C.muted }}>
           Current WJ reference batch: {latestCarbonBatch ? `${latestCarbonBatch.batchRef || latestCarbonBatch.date || "latest batch"} | iodine ${latestCarbonBatch.iodineMgG != null ? latestCarbonBatch.iodineMgG : "--"} mg/g | density ${latestCarbonBatch.densityKgM3 != null ? latestCarbonBatch.densityKgM3 : "--"} kg/m3` : "No live carbon quality batch loaded; default carbon assumptions in use."}
         </div>
@@ -3491,9 +3522,11 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
             </tbody>
           </table>
         </div>
+        <Fold title="About the calibration periods">
         <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
           P1-P3: same carbon charge (cumulative -- not independent data points). P4-P14: tests on fresh beds introduced under the programme (P5/P6 share Bed 3; P9-P12 share Bed 6; P13/P14 share Bed 7). P9-P14 active hours are estimated at 21.7 hrs/day pending charge-log reconciliation. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses raw ambient temperature consistent with calibration basis. PAH model uses MCERTS stack temp.
         </div>
+        </Fold>
         <div style={{ fontSize:11, color:C.muted, marginTop:6 }}>
           Bayes Resid = ln(measured) - ln(Ridge predicted). Sequential Bayesian update on intercept c uses these residuals as observations. Positive mean residual indicates systematic underprediction; Bayesian posterior will shift intercept upward.
         </div>
@@ -3685,6 +3718,7 @@ function CarbonQualityTab({ carbonCoaData, onAdd, onDelete, onArchiveDocument, c
     <div>
       <Card style={{ background:TINT.blueBg, borderLeft:"4px solid " + C.blue }}>
         <SectionTitle>Why Carbon Quality Matters</SectionTitle>
+        <Fold title="Read more">
         <div style={{ fontSize:12, color:TINT.blueText, lineHeight:1.7 }}>
           CX65 Large Granular Coal-Based GAC -- Batch Quality Monitoring
           <br /><br />
@@ -3710,6 +3744,7 @@ function CarbonQualityTab({ carbonCoaData, onAdd, onDelete, onArchiveDocument, c
           of incoming carbon quality for each charge. Contact the CX65 supplier to
           establish routine CoA supply with every delivery.
         </div>
+        </Fold>
       </Card>
       <Card>
         <SectionTitle>Batch Summary Statistics</SectionTitle>
@@ -3727,7 +3762,7 @@ function CarbonQualityTab({ carbonCoaData, onAdd, onDelete, onArchiveDocument, c
           style={{ border:`2px dashed ${dragOver?C.rund:C.border}`, borderRadius:10, padding:"28px 20px", textAlign:"center", background:dragOver?alpha(C.rund,3):C.ivory, transition:"all 0.2s" }}>
           <div style={{ fontSize:13, color:C.muted, marginBottom:10 }}>{importing ? status : "Drag carbon supplier CoA PDF here or browse"}</div>
           <input type="file" accept=".pdf" id="carbonCoaFile" disabled={!canEdit} style={{ display:"none" }} onChange={e=>handleFile(e.target.files[0])} />
-          <label htmlFor="carbonCoaFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse workbook</label>
+          <label htmlFor="carbonCoaFile" style={{ cursor:canEdit?"pointer":"not-allowed", display:"inline-block", padding:"8px 18px", borderRadius:7, border:`1px solid ${canEdit?C.rund:C.border}`, color:canEdit?C.rund:C.muted, fontWeight:700, fontSize:12, opacity:canEdit?1:0.7 }}>Browse PDF</label>
           {status && <div style={{ fontSize:12, color:importing?C.amber:C.teal, marginTop:10 }}>{status}</div>}
         </div>
       </Card>
@@ -4063,44 +4098,36 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
   // seasonRec: climatological reference data for seasonal cards.
   // tOp is computed at render time: operativeTemp(s.ambT, stackTempCorrection).
   // Do not add a stored operative-display field -- it goes stale when the correction changes.
-  const seasonRec = [
-    {
-      season: "Winter (Dec-Feb)",
-      ambT: 4.5,
-      stackT: 15.3,
-      rh: 87,
-      pahGoverns: false,
-      pahNote: "",
-      ambientNote: "Mean 4.5 deg C (Boston 30-yr). T_op 14.8 deg C (4.5 + 10.3 site-measured offset). Well below the PAH threshold. VOC saturation is the operative constraint.",
-    },
-    {
-      season: "Spring (Mar-May)",
-      ambT: 9.6,
-      stackT: 20.1,
-      rh: 78,
-      pahGoverns: false,
-      pahNote: "PAH risk threshold (~" + pahAmbientThreshold_C.toFixed(1) + " deg C ambient) reached in May (mean 12.6 deg C). Monitor closely from late April.",
-      ambientNote: "Mean 9.6 deg C (Mar 6.8, Apr 9.3, May 12.6). T_op 19.9 deg C. VOC governs Mar-Apr. PAH risk threshold approached in May.",
-    },
-    {
-      season: "Summer (Jun-Aug)",
-      ambT: 16.8,
-      stackT: 24.0,
-      rh: 75,
-      pahGoverns: true,
-      pahNote: "PAH IS THE OPERATIVE CONSTRAINT in summer. Mean ambient 16.8 deg C exceeds PAH threshold of ~" + pahAmbientThreshold_C.toFixed(1) + " deg C ambient. T_op 27.1 deg C. VOC safe window shown for reference only - PAH model will force changeout or test trigger before VOC ELV is reached under normal summer conditions. Do not use VOC hours figure for summer scheduling.",
-      ambientNote: "Mean 16.8 deg C (Jun 15.4, Jul 17.6, Aug " + (173/10).toFixed(1) + "). Jul average max 22 deg C. PAH exceedance precedent: P4 fresh carbon breach at 22.5 deg C ambient / 27.7 deg C stack. Summer operations require PAH-led scheduling via Forward Forecast PAH model.",
-    },
-    {
-      season: "Autumn (Sep-Nov)",
-      ambT: 11.1,
-      stackT: 21.1,
-      rh: 85,
-      pahGoverns: false,
-      pahNote: "September (mean 14.8 deg C) exceeds the PAH threshold of ~" + pahAmbientThreshold_C.toFixed(1) + " deg C. PAH risk governs September scheduling. October (11.2 deg C) is borderline safe. Monitor closely through October.",
-      ambientNote: "Mean 11.1 deg C (Sep 14.8, Oct 11.2, Nov 7.4). September elevated PAH risk. P5 (Aug-Nov, 420 hrs, 9.5 deg C mean) returned VOC 8.4 mg/m3 - well inside ELV at this hours count.",
-    },
+  // v2.3.0: season notes are generated from the live PAH threshold so they cannot contradict it.
+  const seasonDefs = [
+    { season:"Winter (Dec-Feb)", months:[11,0,1], rh:87 },
+    { season:"Spring (Mar-May)", months:[2,3,4], rh:78 },
+    { season:"Summer (Jun-Aug)", months:[5,6,7], rh:75 },
+    { season:"Autumn (Sep-Nov)", months:[8,9,10], rh:85 },
   ];
+  const monthName = m => ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m];
+  const seasonRec = seasonDefs.map(function(d) {
+    const temps = d.months.map(m => BOSTON_MONTHLY_TEMPS[m]);
+    const ambT = Math.round(temps.reduce((a, t) => a + t, 0) / temps.length * 10) / 10;
+    const warmest = Math.max(...temps);
+    const warmMonth = monthName(d.months[temps.indexOf(warmest)]);
+    const pahGoverns = ambT >= pahAmbientThreshold_C;
+    const margin = pahAmbientThreshold_C - warmest;
+    const seasonTop = operativeTemp(ambT, settings.stackTempCorrectionC ?? FALLBACK_AMBIENT_TO_INLET_OFFSET_C);
+    const seasonBand = pahRiskLabelForOperativeTemp(seasonTop);
+    const bandNote = (seasonBand === "Elevated" || seasonBand === "High")
+      ? " Season-mean operative temperature " + seasonTop.toFixed(1) + " C is in the " + seasonBand.toLowerCase() + " PAH band: older beds breach at lower temperatures (the 2026 summer bed exceeded the PAH limit at 25.5 to 33 C stack)."
+      : "";
+    const pahNote = pahGoverns
+      ? "Mean ambient " + ambT.toFixed(1) + " C is at or above the PAH threshold (~" + pahAmbientThreshold_C.toFixed(1) + " C ambient, 500 hr bed): PAH governs this season."
+      : margin <= 4
+        ? "Warmest month " + warmMonth + " (" + warmest.toFixed(1) + " C mean) is within " + margin.toFixed(1) + " C of the PAH threshold (~" + pahAmbientThreshold_C.toFixed(1) + " C ambient, 500 hr bed). Warm spells and older beds can cross it: watch the PAH forecast."
+        : "";
+    const pahNoteFull = (pahNote + bandNote).trim();
+    const ambientNote = "Mean " + ambT.toFixed(1) + " C (" + d.months.map(m => monthName(m) + " " + BOSTON_MONTHLY_TEMPS[m].toFixed(1)).join(", ") + "). " +
+      (pahGoverns ? "PAH-led scheduling." : "VOC saturation is the operative constraint on climate averages.");
+    return { season:d.season, ambT, rh:d.rh, pahGoverns, pahNote:pahNoteFull, ambientNote };
+  });
   return (
     <div>
       <Card>
@@ -4113,9 +4140,11 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
           <StatPill label="Uncertainty" value={"x"+Math.exp(pahC.rmse||PAH_RMSE_LOG).toFixed(2)} unit=""
             color={C.blue} sub="1SD multiplicative" />
         </div>
+        <Fold title="P7 vs P8: the two breakthrough mechanisms">
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.75 }}>
           {"P7 vs P8 dual-mechanism confirmation: P7 ran 1,387 hrs at 6.1 deg C ambient (T_op 16.4 deg C at +10.3 offset) -- VOC 5.9 mg/m3, PAH 340 ug/m3, both well inside ELV. P8 ran 1,495 hrs at 11.6 deg C ambient (T_op 21.9 deg C) -- VOC 105 mg/m3 (5.25x ELV, certified JOB-2865), PAH 295 ug/m3 (inside ELV). P4 ran 380 hrs at 22.5 deg C ambient (T_op 32.8 deg C) -- VOC 18.2 mg/m3 (inside ELV), PAH 5,369 ug/m3 (5.4x ELV). This dataset confirms the dual breakthrough mechanism: VOC failure is hours-driven (P8 at modest temperature); PAH failure is temperature-driven (P4 at low hours but high temperature). These are independent failure modes requiring separate scheduling tracks. PAH ambient threshold: ~" + pahAmbientThreshold_C.toFixed(1) + " deg C (model-derived, v1.6.0). Site-measured offset from Testo 925 spot readings: pre-bed inlet 22.7 deg C, external ambient 12.4 deg C, delta +10.3 deg C. Model uses settings.stackTempCorrectionC for all live calculations; +10.3 deg C noted here as the directly measured site constant pending continuous logging validation."}
         </div>
+        </Fold>
         <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
           Seasonal PAH threshold references in this tab are fixed 500-hour comparison points for climatology only. Live Dashboard PAH status is recalculated at the current active-hours state.
         </div>
@@ -4160,6 +4189,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
         <SectionTitle>
           Seasonal Summary -- Boston Lincolnshire Site-Calibrated
         </SectionTitle>
+        <Fold title="About the climate data">
         <div style={{
           padding: "9px 12px",
           background: TINT.blueBg,
@@ -4172,14 +4202,16 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
         }}>
           {"Ambient values are 30-year climatological means for Boston Lincolnshire PE21 (52.9833N 0.0167W). T_operative uses the site-measured ambient-to-inlet offset of +10.3 deg C from Testo 925 spot readings (pre-bed inlet vs external ambient). RH values are monthly means. VOC safe window is calculated at seasonal mean conditions using the live-calibrated VOC model. Where PAH governs (summer), the VOC figure is shown for reference only and must not be used for scheduling. PAH threshold: approximately " + pahAmbientThreshold_C.toFixed(1) + " deg C ambient (model-derived by regression inverse)."}
         </div>
+        </Fold>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {seasonRec.map((s, i) => {
             const tOp = operativeTemp(s.ambT, stackTempCorrection);
             const vocW = safeWindowHoursVOC(
               s.ambT, s.rh, vocC, nf
             );
-            const pahOk = s.pahGoverns === false &&
-              s.ambT < pahAmbientThreshold_C;
+            // Same PAH risk scale as the Overview season strip (season-mean operative temperature).
+            const pahBand = pahRiskLabelForOperativeTemp(tOp);
+            const pahOk = !s.pahGoverns && pahBand === "Low";
             const borderColor = s.pahGoverns
               ? C.red
               : vocW < 500
@@ -4240,15 +4272,13 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
                 )}
                 <div style={{
                   fontSize: 11,
-                  color: pahOk ? C.teal : C.amber,
+                  color: pahOk ? C.teal : pahBand === "Moderate" ? C.amber : C.red,
                   fontWeight: 600,
                   marginBottom: 6,
                 }}>
                   PAH: {s.pahGoverns
                     ? "DOMINANT CONSTRAINT"
-                    : s.pahNote
-                    ? "MONITOR"
-                    : "LOW RISK"}
+                    : pahBand.toUpperCase() + " RISK"}
                 </div>
                 {!s.pahGoverns && (
                   <div style={{
@@ -4256,7 +4286,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
                     color: C.muted,
                     marginBottom: 4,
                   }}>
-                    ~{Math.round(vocW / (24 * 0.9))} days at 90% util
+                    ~{Math.round(vocW / (24 * (settings.utilisationRate || 0.82)))} days at {Math.round((settings.utilisationRate || 0.82) * 100)}% util
                   </div>
                 )}
                 <div style={{
@@ -4298,18 +4328,16 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
           lineHeight: 1.6,
           fontWeight: 700,
         }}>
-          {"PAH SCHEDULING NOTE (May-September): Model-derived PAH ambient risk " +
-          "threshold is ~" + pahAmbientThreshold_C.toFixed(1) + " deg C " +
-          "(stack temp regression: 0.685T + 13.506 = ~21.4 deg C breach stack temp, " +
-          "inverted for ambient). This threshold is exceeded from late April through " +
-          "September at Boston climatological means: May 12.6 deg C, Jun 15.4 deg C, " +
-          "Jul 17.6 deg C, Aug " + (173/10).toFixed(1) + " deg C, Sep 14.8 deg C. " +
-          "PAH governs scheduling across this full window, not June-August only. " +
-          "The previous threshold figure was arithmetically erroneous " +
-          "and has been removed in model v1.6.0 (audit C&G-GAC-2026-AUDIT-001). " +
-          "P4 evidence: fresh carbon, 380 hrs, stack 27.7 deg C -- " +
-          "PAH 5,369 ug/m3 (5.4x ELV), VOC 18.2 mg/m3 (inside ELV). " +
-          "PAH governs in warm conditions independent of carbon age."}
+          {(function() {
+            const hot = BOSTON_MONTHLY_TEMPS.map((t, m) => ({ t, m })).filter(x => x.t >= pahAmbientThreshold_C);
+            const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+            const head = "PAH SCHEDULING NOTE: the model PAH breach is ~" + pahThresh.toFixed(1) + " C stack (~" + pahAmbientThreshold_C.toFixed(1) + " C ambient) for a 500 hr bed. ";
+            const months = hot.length
+              ? "On climate averages this is reached in " + hot.map(x => names[x.m]).join(", ") + ": PAH governs scheduling in those months. "
+              : "No month reaches it on climate averages, so PAH risk comes from warm spells and older beds rather than the average season. ";
+            const evidence = "Stack test evidence: every PAH exceedance (P3, P4, P10, P11, P12) was at 25.5 C stack or above; P4 breached on fresh carbon at 27.7 C stack. Use the Forward Forecast PAH projection from May to September.";
+            return head + months + evidence;
+          })()}
         </div>
       </Card>
     </div>
@@ -4667,9 +4695,11 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
 
       <Card>
         <SectionTitle>Assumptions and Limitations</SectionTitle>
+        <Fold title="Read the assumptions and limitations">
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.7 }}>
           This forecast is derived from a multivariate VOC regression model calibrated against independent stack test periods (R2={vocC.r2!=null?vocC.r2.toFixed(3):"default"}). PAH breach dates use the calibrated predictPAH model. Predictions should be treated as risk-informed planning estimates, not guaranteed changeout intervals. Model accuracy will improve as additional stack test periods are calibrated. Active ambient-to-inlet offset of +{activeAmbientToInletOffset.toFixed(1)}C applied to all ambient inputs. This tool supports but does not replace MCERTS-certified stack testing as the primary compliance verification method. Anchor scaling from a current VOC reading has been removed: a proportional residual at the current hours count cannot be assumed to hold across the forecast horizon under a log-linear model structure, and the bias was most severe at high residual periods such as P8 (105 mg/m3 certified, 5.25x ELV). The unanchored regression prediction is used throughout.
         </div>
+        </Fold>
         <div style={{ marginTop:10, padding:"10px 14px", background:settings.useConservativeRH?TINT.safeBg:TINT.amberBg, border:`1px solid ${settings.useConservativeRH?C.teal:C.amber}`, borderRadius:7, color:settings.useConservativeRH?TINT.safeText:TINT.amberText, fontSize:11, lineHeight:1.55, fontWeight:700 }}>
           Humidity assumption: {settings.useConservativeRH ? "Conservative mode ON - 90% RH applied to all forecast periods. BAT-aligned for Boston, Lincolnshire." : "Conservative mode OFF - 80% RH average applied. For compliance scheduling, enable Conservative Humidity Mode in Settings."}
         </div>
@@ -4708,9 +4738,11 @@ function BATComplianceTab({ settings, onChange, canEdit, stackData }) {
       </Card>
       <Card>
         <SectionTitle>Lead-Lag Configuration Assessment</SectionTitle>
+        <Fold title="Read the lead-lag assessment">
         <div style={{ fontSize:12, color:C.ink, lineHeight:1.7 }}>
           BAT 51(c) - Lead-Lag GAC Configuration: A lead-lag (series) bed configuration would install a second carbon vessel in series downstream of the primary bed. When the lead bed reaches a defined breakthrough threshold (e.g. 80% of VOC ELV), it is taken offline for carbon replacement while the lag bed continues to provide abatement. This approach: (1) eliminates the risk of permit exceedance during the changeout window, (2) provides a direct compliance safety net independent of temperature-driven prediction uncertainty, (3) is explicitly named BAT under Decision (EU) 2020/2009 BAT 51(c), and (4) is lower capital cost and operationally simpler than condensation pre-treatment or thermal oxidation. Status: ASSESSMENT PENDING. Recommend formal feasibility assessment for inclusion in the next permit review submission.
         </div>
+        </Fold>
         <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginTop:14 }}>
           <Input label="Last reviewed" type="date" value={settings.batReviewDate} onChange={v=>onChange("batReviewDate",v)} style={{ flex:"1 1 180px" }} disabled={!canEdit} />
           <Input label="Reviewed by" value={settings.batReviewedBy} onChange={v=>onChange("batReviewedBy",v)} style={{ flex:"1 1 220px" }} disabled={!canEdit} />
@@ -4872,9 +4904,11 @@ function ThermalAnalysisTab({ thermalLog, thermalStats, onAddThermalEntry, onDel
     <div>
       <Card style={{ background:TINT.blueBg, borderLeft:`4px solid ${C.blue}` }}>
         <SectionTitle>Why This Matters</SectionTitle>
+        <Fold title="Read more">
         <div style={{ fontSize:12, color:TINT.blueText, lineHeight:1.7 }}>
           Thermal monitoring is the live operational bridge between ambient weather, inlet duct heat gain, and the PAH breach pathway. VOC remains an ambient-basis regression, but PAH scheduling depends on the temperature the carbon actually sees. Keep this section current whenever spot readings or logger exports are available.
         </div>
+        </Fold>
         <div style={{ marginTop:12, padding:"10px 12px", borderRadius:7, background:C.surface, border:`1px solid ${C.border}`, fontSize:12, color:C.ink, lineHeight:1.55 }}>
           <label style={{ display:"flex", gap:8, alignItems:"center", fontWeight:700, color:thermalOffsetReady?C.ink:C.muted }}>
             <input
@@ -5128,9 +5162,11 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
             {FAN_CONFIG_LOG[openFanNote].stackDischargeFlowNote}
           </div>
         )}
+        <Fold title="About the flow values">
         <div style={{ fontSize:11, color:C.muted, marginTop:10, lineHeight:1.6 }}>
           All flow values are Envirocare-measured stack discharge flows (post-demister, post-carbon bed) or fan-law estimates where no Envirocare measurement exists during that configuration window. True carbon bed inlet flow is marginally higher than stack discharge flow. Stack discharge flow is used as a conservative proxy in Wheeler-Jonas EBCT calculations.
         </div>
+        </Fold>
       </Card>
       <Card>
         <SectionTitle>Carbon Bed Configuration</SectionTitle>
@@ -5344,6 +5380,28 @@ function seasonOutlook(settings, vocC) {
       pahTone: pah === "Low" ? "ok" : pah === "Moderate" ? "warn" : "bad",
     };
   });
+}
+
+// v2.3.0: a stack test entered in the app is a test on the current bed. Record the bed start,
+// mark it as a fresh-bed period (so both the VOC and PAH calibrations use it), and attach
+// creosote used since the changeout from the synced creosote log (trial model input).
+function enrichStackRecord(rec, lastChangeout, dailyLog) {
+  const out = { ...rec };
+  const start = String(lastChangeout || "").slice(0, 10);
+  if (start && rec.date && rec.date >= start) {
+    if (!out.periodStart) out.periodStart = start;
+    if (!out.periodEnd) out.periodEnd = rec.date;
+    if (out.sameCarbon == null) out.sameCarbon = false;
+    if (out.bedDay == null) out.bedDay = Math.max(0, daysBetween(start, rec.date));
+    const rows = (dailyLog || []).filter(r => r && r.date && r.usageKg != null);
+    const covered = rows.some(r => r.date <= start) && rows.some(r => r.date >= rec.date);
+    if (out.creoT == null && covered) {
+      const inPeriod = rows.filter(r => r.date > start && r.date <= rec.date);
+      out.creoT = Math.round(inPeriod.reduce((a, r) => a + Math.max(0, r.usageKg), 0) / 100) / 10;
+      out.workingDays = Math.round(inPeriod.reduce((a, r) => a + Math.max(0, r.workingDays || 0), 0) * 10) / 10;
+    }
+  }
+  return out;
 }
 
 function sortedTests(stackData) {
@@ -5877,7 +5935,14 @@ const NAV_AREAS = [
   { id:"admin",     label:"Model & Admin",     tabs:[{ id:"modeldetails", label:"Model details" }, { id:"settings", label:"Settings" }, { id:"documents", label:"Documents" }] },
 ];
 
-function AppHeader({ area, onArea, theme, onToggleTheme, user, syncLabel, syncError, clock }) {
+// The clock lives in its own component so the rest of the app does not re-render every tick.
+function HeaderClock() {
+  const fmt = () => new Date().toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" });
+  const [t, setT] = useState(fmt);
+  useEffect(() => { const id = setInterval(() => setT(fmt()), 30000); return () => clearInterval(id); }, []);
+  return <span style={{ fontFamily:MONO }}>{t}</span>;
+}
+function AppHeader({ area, onArea, theme, onToggleTheme, user, syncLabel, syncError }) {
   const initials = user && user.username ? user.username.slice(0, 2).toUpperCase() : "--";
   return (
     <header style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, position:"sticky", top:0, zIndex:20 }}>
@@ -5898,7 +5963,7 @@ function AppHeader({ area, onArea, theme, onToggleTheme, user, syncLabel, syncEr
         <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
           <div title={syncError || ""} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:C.muted }}>
             <span style={{ width:8, height:8, borderRadius:"50%", background:syncError ? C.red : C.teal, boxShadow:"0 0 0 4px " + (syncError ? TINT.redBg : TINT.safeBg) }} />
-            <span>{syncLabel}</span><span style={{ fontFamily:MONO }}>{clock}</span>
+            <span>{syncLabel}</span><HeaderClock />
           </div>
           <button type="button" onClick={onToggleTheme} aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"} style={{ display:"flex", alignItems:"center", gap:8, minHeight:40, padding:"0 14px", borderRadius:999, border:`1px solid ${C.border}`, background:C.surface2, color:C.ink, cursor:"pointer", fontSize:13, fontFamily:"inherit" }}>
             {theme === "light"
@@ -5917,11 +5982,6 @@ function AppHeader({ area, onArea, theme, onToggleTheme, user, syncLabel, syncEr
 // MAIN APP
 // ============================================================
 export default function App() {
-  const [clockTime, setClockTime] = useState(new Date().toLocaleTimeString("en-GB"));
-  useEffect(() => {
-    const id = setInterval(() => setClockTime(new Date().toLocaleTimeString("en-GB")), 1000);
-    return () => clearInterval(id);
-  }, []);
   const [theme, toggleTheme] = useTheme();
   const [activeArea, setActiveArea] = useState("overview");
   const [areaTabs, setAreaTabs] = useState(()=>{
@@ -6031,7 +6091,6 @@ export default function App() {
     { id:"modeldetails", label:"Model Details" },
     { id:"settings",     label:"Settings"      },
   ];
-  const clockDate = new Date().toLocaleDateString("en-GB");
 
   useEffect(()=>{
     if (authState.user) void refreshAdminData();
@@ -6076,7 +6135,7 @@ export default function App() {
   const currentArea = NAV_AREAS.find(x => x.id === activeArea) || NAV_AREAS[0];
   return (
     <div style={{ background:C.bg, color:C.ink, minHeight:"100vh", fontFamily:"Inter, system-ui, sans-serif" }}>
-      <AppHeader area={activeArea} onArea={id=>navigateTo(id)} theme={theme} onToggleTheme={toggleTheme} user={authState.user} syncLabel={platformMeta.syncLabel} syncError={platformMeta.error} clock={clockTime.slice(0,5)} />
+      <AppHeader area={activeArea} onArea={id=>navigateTo(id)} theme={theme} onToggleTheme={toggleTheme} user={authState.user} syncLabel={platformMeta.syncLabel} syncError={platformMeta.error} />
       <main style={{ maxWidth:1376, margin:"0 auto", padding:"24px 24px 40px", boxSizing:"border-box" }}>
         {currentArea.tabs.length > 1 ? <TabBar tabs={currentArea.tabs} active={activeTab} onChange={setActiveTab} /> : null}
         {platformMeta.error || isViewer ? (
@@ -6099,8 +6158,8 @@ export default function App() {
           </>
         )}
         {activeTab==="dashboard"    && <DashboardTab    stackData={stackData} settings={settings} weather={weather} ambientOverride={appAmbientTemp} chargeLog={chargeLog} lastChangeout={lastChangeout} downtimeHrs={downtimeHrs} onDowntime={setDowntimeHrs} vocC={vocC} pahC={pahC} canEdit={canEdit} latestCarbonBatch={latestCarbonBatch} />}
-        {activeTab==="cycles"       && <ChargeCyclesTab chargeLog={chargeLog} onAddCharge={c=>setChargeLog(l=>[...l,c])} onDeleteCharge={id=>setChargeLog(l=>l.filter(c=>c.id!==id))} lastChangeout={lastChangeout} settings={settings} vocC={vocC} canEdit={canEdit} />}
-        {activeTab==="stack"        && <StackTestsTab   stackData={stackData} onAdd={e=>setStackDataExtra(d=>[...d,e])} settings={settings} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
+        {activeTab==="cycles"       && <ChargeCyclesTab chargeLog={chargeLog} onAddCharge={c=>setChargeLog(l=>[...l,c])} onAddCharges={list=>setChargeLog(l=>[...l,...list])} onDeleteCharge={id=>setChargeLog(l=>l.filter(c=>c.id!==id))} lastChangeout={lastChangeout} settings={settings} vocC={vocC} canEdit={canEdit} />}
+        {activeTab==="stack"        && <StackTestsTab   stackData={stackData} lastChangeout={lastChangeout} onAdd={e=>setStackDataExtra(d=>[...d,enrichStackRecord(e, lastChangeout, platformState.cgb_creoDailyLog)])} settings={settings} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} />}
         {activeTab==="thermal"      && <ThermalAnalysisTab thermalLog={thermalLog} thermalStats={thermalStats} onAddThermalEntry={entry=>setThermalLog(list=>[...list, entry])} onDeleteThermalEntry={id=>setThermalLog(list=>list.filter(entry=>entry.id!==id))} loggerLog={loggerLog} onImportLoggerData={rows=>setLoggerLog(list=>[...list, ...rows])} onClearLoggerData={()=>setLoggerLog([])} onUpdateCorrectionFactor={newDelta=>updateSetting("stackTempCorrectionC", newDelta)} settings={settings} onChangeSetting={updateSetting} canEdit={canEdit} />}
         {activeTab==="coa"          && <CoATab onImportWorkbook={importCreosoteWorkbook} creoDeliveries={platformState.cgb_creoDeliveries} creoDailyLog={platformState.cgb_creoDailyLog} creoImportStatus={platformMeta && platformMeta.imports ? platformMeta.imports.creosote : null} coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
