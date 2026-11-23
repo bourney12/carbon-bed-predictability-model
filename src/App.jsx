@@ -4,6 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ReferenceArea, ResponsiveContainer
 } from "recharts";
 import { createDefaultPlatformState } from "./platformShared.js";
+import { cleanCreoLog, cleanUsageKg } from "./creoUsage.js";
 
 // ============================================================
 // BRAND TOKENS
@@ -321,30 +322,33 @@ const STACK_TEMP_B =  0.685;
 // from changeout to test date. measuredFlow_m3hr is informational only and
 // is deliberately not fed to calcEffectiveHours, keeping P8-P14 on the same
 // effective-hours basis as P1-P7.
-// creoT: creosote used (tonnes, positive tank-delta usage) and workingDays: working days,
-// both summed from the Creosote Tank and Flash Point Log Daily Log between periodStart and
-// the test date (read 20 Nov 2026). Used by the creosote-throughput trial model.
+// creoT: creosote used (tonnes) between periodStart and the test date, from the Creosote Tank
+// and Flash Point Log Daily Log (read 23 Nov 2026), as a net stock balance on the cleaned log
+// (src/creoUsage.js: copied, repeated and incomplete readings rebuilt from the real readings
+// either side). creoTOriginal is the v2.1-v2.4 positive-only sum, kept for reference: it was
+// inflated by copied readings (a delivery on a copied day counted as usage). workingDays is
+// unchanged. Used by the creosote-throughput trial model.
 const INITIAL_STACK_DATA = [
-  { period:"P1", creoT:757.8, workingDays:89, date:"2025-01-16", periodStart:"2024-09-01", periodEnd:"2025-01-16", activeHrs:320,  avgTemp:8.0,  stackTemp:18.0, avgRH:82, voc:10.6, pah:524.9,  charges:55,  p1Charges:32, p2Charges:23,  sameCarbon:true,  dropletFalloutObserved:null },
-  { period:"P2", creoT:1150.7, workingDays:128, date:"2025-03-12", periodStart:"2024-09-01", periodEnd:"2025-03-12", activeHrs:780,  avgTemp:12.0, stackTemp:22.0, avgRH:78, voc:45.0, pah:865.0,  charges:133, p1Charges:78, p2Charges:55,  sameCarbon:true, dropletFalloutObserved:null,
+  { period:"P1", creoT:550.6, creoTOriginal:757.8, workingDays:89, date:"2025-01-16", periodStart:"2024-09-01", periodEnd:"2025-01-16", activeHrs:320,  avgTemp:8.0,  stackTemp:18.0, avgRH:82, voc:10.6, pah:524.9,  charges:55,  p1Charges:32, p2Charges:23,  sameCarbon:true,  dropletFalloutObserved:null },
+  { period:"P2", creoT:920.3, creoTOriginal:1150.7, workingDays:128, date:"2025-03-12", periodStart:"2024-09-01", periodEnd:"2025-03-12", activeHrs:780,  avgTemp:12.0, stackTemp:22.0, avgRH:78, voc:45.0, pah:865.0,  charges:133, p1Charges:78, p2Charges:55,  sameCarbon:true, dropletFalloutObserved:null,
     flowAnomalous:true,
     excludeFromFlowCalcs:true,
     anomalyNote:"Stack discharge flow 3,659 m3/hr vs 7,000-12,000 m3/hr all other Config A periods. Config A pulleys confirmed installed at time of test. Envirocare certified measurement stands - raw traverse data not available for review. No operational cause identified. Anomaly formally unresolvable. Excluded from Wheeler-Jonas EBCT, mass flux calculations, and T_operative correction derivation. Retained in VOC and PAH regression with this flag. See Stack Tests tab." },
-  { period:"P3", creoT:1734.0, workingDays:177, date:"2025-05-20", periodStart:"2024-09-01", periodEnd:"2025-05-20", activeHrs:1100, avgTemp:16.0, stackTemp:26.0, avgRH:74, voc:55.6, pah:2475.0, charges:188, p1Charges:110, p2Charges:78, sameCarbon:true,  dropletFalloutObserved:null },
-  { period:"P4", creoT:409.8, workingDays:32, date:"2025-07-15", periodStart:"2025-06-01", periodEnd:"2025-07-15", activeHrs:380,  avgTemp:22.5, stackTemp:27.7, avgRH:70, voc:18.2, pah:5369.0, charges:65,  p1Charges:38, p2Charges:27,  sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P5", creoT:765.4, workingDays:69, date:"2025-11-06", periodStart:"2025-08-01", periodEnd:"2025-11-06", activeHrs:420,  avgTemp:9.5,  stackTemp:19.5, avgRH:80, voc:8.4,  pah:586.0,  charges:72,  p1Charges:42, p2Charges:30,  sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P6", creoT:1111.7, workingDays:99, date:"2025-12-18", periodStart:"2025-08-01", periodEnd:"2025-12-18", activeHrs:890,  avgTemp:10.2, stackTemp:20.0, avgRH:83, voc:28.0, pah:712.0,  charges:152, p1Charges:89, p2Charges:63,  sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P7", creoT:606.3, workingDays:44, date:"2026-03-14", periodStart:"2026-01-12", periodEnd:"2026-03-14", activeHrs:1387, avgTemp:6.1,  stackTemp:17.5, avgRH:85, voc:5.9,  pah:340.0,  charges:237, p1Charges:138, p2Charges:99, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P8", creoT:1050.5, workingDays:56, report:"JOB-2865", date:"2026-06-02", periodStart:"2026-03-20", periodEnd:"2026-06-02", bedId:"Bed 5", activeHrs:1495, avgTemp:11.6, stackTemp:24.8, avgRH:78, voc:105, pah:295, charges:241, p1Charges:141, p2Charges:100, measuredFlow_m3hr:9884, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P9", creoT:613.5, workingDays:28, report:"JOB-2963", date:"2026-07-14", periodStart:"2026-06-05", periodEnd:"2026-07-14", bedId:"Bed 6", bedDay:39, activeHrs:846, activeHrsEstimated:true, avgTemp:19.0, stackTemp:25.3, avgRH:69, voc:44.6, pah:144, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:3589, sameCarbon:false, dropletFalloutObserved:null,
+  { period:"P3", creoT:1459.0, creoTOriginal:1734.0, workingDays:177, date:"2025-05-20", periodStart:"2024-09-01", periodEnd:"2025-05-20", activeHrs:1100, avgTemp:16.0, stackTemp:26.0, avgRH:74, voc:55.6, pah:2475.0, charges:188, p1Charges:110, p2Charges:78, sameCarbon:true,  dropletFalloutObserved:null },
+  { period:"P4", creoT:401.7, creoTOriginal:409.8, workingDays:32, date:"2025-07-15", periodStart:"2025-06-01", periodEnd:"2025-07-15", activeHrs:380,  avgTemp:22.5, stackTemp:27.7, avgRH:70, voc:18.2, pah:5369.0, charges:65,  p1Charges:38, p2Charges:27,  sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P5", creoT:691.2, creoTOriginal:765.4, workingDays:69, date:"2025-11-06", periodStart:"2025-08-01", periodEnd:"2025-11-06", activeHrs:420,  avgTemp:9.5,  stackTemp:19.5, avgRH:80, voc:8.4,  pah:586.0,  charges:72,  p1Charges:42, p2Charges:30,  sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P6", creoT:1016.3, creoTOriginal:1111.7, workingDays:99, date:"2025-12-18", periodStart:"2025-08-01", periodEnd:"2025-12-18", activeHrs:890,  avgTemp:10.2, stackTemp:20.0, avgRH:83, voc:28.0, pah:712.0,  charges:152, p1Charges:89, p2Charges:63,  sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P7", creoT:559.6, creoTOriginal:606.3, workingDays:44, date:"2026-03-14", periodStart:"2026-01-12", periodEnd:"2026-03-14", activeHrs:1387, avgTemp:6.1,  stackTemp:17.5, avgRH:85, voc:5.9,  pah:340.0,  charges:237, p1Charges:138, p2Charges:99, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P8", creoT:915.8, creoTOriginal:1050.5, workingDays:56, report:"JOB-2865", date:"2026-06-02", periodStart:"2026-03-20", periodEnd:"2026-06-02", bedId:"Bed 5", activeHrs:1495, avgTemp:11.6, stackTemp:24.8, avgRH:78, voc:105, pah:295, charges:241, p1Charges:141, p2Charges:100, measuredFlow_m3hr:9884, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P9", creoT:468.4, creoTOriginal:613.5, workingDays:28, report:"JOB-2963", date:"2026-07-14", periodStart:"2026-06-05", periodEnd:"2026-07-14", bedId:"Bed 6", bedDay:39, activeHrs:846, activeHrsEstimated:true, avgTemp:19.0, stackTemp:25.3, avgRH:69, voc:44.6, pah:144, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:3589, sameCarbon:false, dropletFalloutObserved:null,
     flowAnomalous:true,
     excludeFromFlowCalcs:true,
     anomalyNote:"Stack discharge flow 3,589 m3/hr on test day vs ~9,000-10,000 m3/hr at P8 and P10-P14. Same pattern as P2. Cause not identified; queried with Cura Terrae. Excluded from flow-dependent calculations. Retained in VOC and PAH regression with this flag." },
-  { period:"P10", creoT:764.6, workingDays:39, report:"JOB-3036", date:"2026-07-29", periodStart:"2026-06-05", periodEnd:"2026-07-29", bedId:"Bed 6", bedDay:54, activeHrs:1172, activeHrsEstimated:true, avgTemp:18.9, stackTemp:33.0, avgRH:68, voc:138, pah:2116, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9464, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P11", creoT:959.3, workingDays:50, report:"JOB-3082", date:"2026-08-13", periodStart:"2026-06-05", periodEnd:"2026-08-13", bedId:"Bed 6", bedDay:69, activeHrs:1497, activeHrsEstimated:true, avgTemp:19.2, stackTemp:31.0, avgRH:66, voc:166, pah:7950, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:10033, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P12", creoT:1082.8, workingDays:58, report:"JOB-3083 R1", date:"2026-08-25", periodStart:"2026-06-05", periodEnd:"2026-08-25", bedId:"Bed 6", bedDay:81, activeHrs:1758, activeHrsEstimated:true, avgTemp:18.9, stackTemp:25.5, avgRH:67, voc:109, pah:1300, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P13", creoT:15.3, workingDays:1, report:"JOB-3083 R2", date:"2026-08-26", periodStart:"2026-08-25", periodEnd:"2026-08-26", bedId:"Bed 7", bedDay:1, activeHrs:22, activeHrsEstimated:true, avgTemp:19.6, stackTemp:28.8, avgRH:74, voc:0.093, pah:53.5, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
-  { period:"P14", creoT:289.4, workingDays:21, report:"JOB-3146", date:"2026-09-24", periodStart:"2026-08-25", periodEnd:"2026-09-24", bedId:"Bed 7", bedDay:30, activeHrs:651, activeHrsEstimated:true, avgTemp:17.2, stackTemp:21.0, avgRH:75, voc:1.0, pah:33.8, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9606, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P10", creoT:619.4, creoTOriginal:764.6, workingDays:39, report:"JOB-3036", date:"2026-07-29", periodStart:"2026-06-05", periodEnd:"2026-07-29", bedId:"Bed 6", bedDay:54, activeHrs:1172, activeHrsEstimated:true, avgTemp:18.9, stackTemp:33.0, avgRH:68, voc:138, pah:2116, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9464, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P11", creoT:814.2, creoTOriginal:959.3, workingDays:50, report:"JOB-3082", date:"2026-08-13", periodStart:"2026-06-05", periodEnd:"2026-08-13", bedId:"Bed 6", bedDay:69, activeHrs:1497, activeHrsEstimated:true, avgTemp:19.2, stackTemp:31.0, avgRH:66, voc:166, pah:7950, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:10033, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P12", creoT:937.7, creoTOriginal:1082.8, workingDays:58, report:"JOB-3083 R1", date:"2026-08-25", periodStart:"2026-06-05", periodEnd:"2026-08-25", bedId:"Bed 6", bedDay:81, activeHrs:1758, activeHrsEstimated:true, avgTemp:18.9, stackTemp:25.5, avgRH:67, voc:109, pah:1300, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P13", creoT:15.3, creoTOriginal:15.3, workingDays:1, report:"JOB-3083 R2", date:"2026-08-26", periodStart:"2026-08-25", periodEnd:"2026-08-26", bedId:"Bed 7", bedDay:1, activeHrs:22, activeHrsEstimated:true, avgTemp:19.6, stackTemp:28.8, avgRH:74, voc:0.093, pah:53.5, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
+  { period:"P14", creoT:289.4, creoTOriginal:289.4, workingDays:21, report:"JOB-3146", date:"2026-09-24", periodStart:"2026-08-25", periodEnd:"2026-09-24", bedId:"Bed 7", bedDay:30, activeHrs:651, activeHrsEstimated:true, avgTemp:17.2, stackTemp:21.0, avgRH:75, voc:1.0, pah:33.8, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9606, sameCarbon:false, dropletFalloutObserved:null },
 ];
 const INITIAL_CHARGES = [];
 
@@ -597,7 +601,7 @@ function calibratePAH(stackData) {
 // ln(VOC) = a*ln(creosote tonnes since changeout) + b*stackTemp + c
 // ln(PAH) = a*stackTemp + b*ln(creosote tonnes) + c
 // Runs alongside the operative run-hours model; it does not drive scheduling.
-// Tonnes are tank-delta usage from the Creosote Tank and Flash Point Log Daily Log,
+// Tonnes are the net stock balance on the cleaned Creosote Tank and Flash Point Log Daily Log,
 // measured the same way for every period (the run-hours basis changed in 2026).
 // Uncertainty uses the leave-one-out RMSE in log space (prediction error on unseen tests).
 // ============================================================
@@ -646,7 +650,8 @@ function predictPAHCreo(stackTemp, tonnes, cm) {
 // Creosote used on the current bed and the forward usage rate.
 // Prefers the synced Daily Log; falls back to the rate in Settings.
 function creosoteBedState(dailyLog, lastChangeout, settings, today) {
-  const rows = (dailyLog || []).filter(r => r && r.date && r.usageKg != null).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  // dailyLog here is the cleaned log (cleanCreoLog rows): copied/incomplete readings rebuilt.
+  const rows = (dailyLog || []).filter(r => r && r.date).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   const start = String(lastChangeout).slice(0,10);
   const todayIso = isoDateFromDate(today);
   const fallbackRate = settings.creoRateTPerDay != null ? settings.creoRateTPerDay : 11;
@@ -656,9 +661,9 @@ function creosoteBedState(dailyLog, lastChangeout, settings, today) {
   if (!logCurrent) {
     return { tonnes: fallbackRate * daysOnBed, rate: fallbackRate, source: "estimate", note: "estimated at " + fallbackRate + " t/day (Settings) - creosote log not synced" };
   }
-  const usedKg = rows.filter(r => r.date > start && r.date <= todayIso).reduce((a, r) => a + Math.max(0, r.usageKg), 0);
+  const usedKg = cleanUsageKg(rows, start, todayIso, true) || 0;
   const from30 = isoDateFromDate(addDays(today, -30));
-  const kg30 = rows.filter(r => r.date > from30 && r.date <= todayIso).reduce((a, r) => a + Math.max(0, r.usageKg), 0);
+  const kg30 = cleanUsageKg(rows, from30, todayIso, true) || 0;
   const rate = kg30 > 0 ? kg30 / 1000 / 30 : fallbackRate;
   return { tonnes: usedKg / 1000, rate, source: "log", note: "from the creosote log; forward rate " + rate.toFixed(1) + " t/day (last 30 days)" };
 }
@@ -2781,7 +2786,7 @@ function StackTestsTab({ stackData, onAdd, settings, onArchiveDocument, canArchi
 // CoA DATA TAB
 // ============================================================
 // ---- Creosote supply and usage (synced from the site's Creosote Tank and Flash Point Log) ----
-function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
+function CreosoteSupplyCard({ deliveries, dailyLog, importStatus, flaggedCount }) {
   const [months, setMonths] = useState(12);
   const rows = useMemo(() => (dailyLog || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))), [dailyLog]);
   const dels = useMemo(() => (deliveries || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))), [deliveries]);
@@ -2796,7 +2801,8 @@ function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
     };
     rows.forEach(r => {
       const b = bucket(String(r.date).slice(0,7));
-      if (r.usageKg != null && r.usageKg > 0) b.usageKg += r.usageKg;
+      const u = r.usageCleanKg !== undefined ? r.usageCleanKg : r.usageKg;
+      if (u != null) b.usageKg += u;
       if (r.workingDays != null && r.workingDays > 0) b.workingDays += r.workingDays;
     });
     dels.forEach(d => {
@@ -2808,10 +2814,10 @@ function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
     return [...map.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(b => ({
       month: b.month,
       label: b.month.slice(2).replace("-", "/"),
-      usageT: Math.round(b.usageKg / 100) / 10,
+      usageT: Math.round(Math.max(0, b.usageKg) / 100) / 10,
       deliveredT: Math.round(b.deliveredKg / 100) / 10,
       loads: b.loads,
-      perDayT: b.workingDays > 0 ? Math.round(b.usageKg / b.workingDays / 100) / 10 : null,
+      perDayT: b.workingDays > 0 ? Math.round(Math.max(0, b.usageKg) / b.workingDays / 100) / 10 : null,
       avgFP: b.fpN ? Math.round(b.fpSum / b.fpN * 10) / 10 : null,
     }));
   }, [rows, dels]);
@@ -2821,7 +2827,8 @@ function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
     if (!latest) return null;
     const cutoff = new Date(new Date(latest.date + "T00:00:00Z").getTime() - 30 * 86400000).toISOString().slice(0,10);
     let use = 0, days = 0;
-    rows.forEach(r => { if (r.date > cutoff) { if (r.usageKg > 0) use += r.usageKg; if (r.workingDays > 0) days += r.workingDays; } });
+    rows.forEach(r => { if (r.date > cutoff) { const u = r.usageCleanKg !== undefined ? r.usageCleanKg : r.usageKg; if (u != null) use += u; if (r.workingDays > 0) days += r.workingDays; } });
+    use = Math.max(0, use);
     return { use, perDay: days > 0 ? use / days : null };
   }, [rows, latest]);
 
@@ -2852,7 +2859,8 @@ function CreosoteSupplyCard({ deliveries, dailyLog, importStatus }) {
       </div>
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
-        <div style={{ fontSize:12, color:C.muted }}>Monthly usage (from tank deltas) against deliveries, with mean delivered flash point.</div>
+        <div style={{ fontSize:12, color:C.muted }}>Monthly usage (tank stock balance) against deliveries, with mean delivered flash point.
+          {flaggedCount > 0 ? " " + flaggedCount.toLocaleString("en-GB") + " Daily Log readings were copied or incomplete; their usage is rebuilt from the real readings either side." : ""}</div>
         <div style={{ display:"flex", gap:4 }}>
           {[[6,"6m"],[12,"12m"],[24,"24m"],[0,"All"]].map(([m,l]) => (
             <button key={l} onClick={()=>setMonths(m)} style={{ fontSize:12, padding:"3px 8px", border:"1px solid " + C.border, background:months===m?C.rund:C.surface, color:months===m?"#fff":C.ink, cursor:"pointer", borderRadius:2 }}>{l}</button>
@@ -2990,7 +2998,7 @@ async function readCreosoteWorkbook(file, sinceDate) {
   return { fileName:file.name, fileModifiedAt:file.lastModified ? new Date(file.lastModified).toISOString() : null, sinceDate, deliveries, dailyLog };
 }
 
-function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchiveDocument, canArchiveDocuments, canEdit, creoDeliveries, creoDailyLog, creoImportStatus, onImportWorkbook }) {
+function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchiveDocument, canArchiveDocuments, canEdit, creoDeliveries, creoDailyLog, creoFlagged, creoImportStatus, onImportWorkbook }) {
   const [form, setForm] = useState({ date:"", certNo:"", flashpoint:"", crystallisation:"", naphthalene:"", bap:"" });
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState("");
@@ -3291,7 +3299,7 @@ function CoATab({ coaData, onAdd, onImport, settings, onSettingChange, onArchive
         <Btn onClick={()=>{if(!form.date||!form.certNo)return;onAdd({...form,flashpoint:parseFloat(form.flashpoint)||null,crystallisation:parseFloat(form.crystallisation)||null,naphthalene:parseFloat(form.naphthalene)||null,bap:parseFloat(form.bap)||null});setForm({date:"",certNo:"",flashpoint:"",crystallisation:"",naphthalene:"",bap:""});}} variant="rund" disabled={!canEdit}>Add Entry</Btn>
       </Card>
 
-      <CreosoteSupplyCard deliveries={creoDeliveries} dailyLog={creoDailyLog} importStatus={creoImportStatus} />
+      <CreosoteSupplyCard deliveries={creoDeliveries} dailyLog={creoDailyLog} importStatus={creoImportStatus} flaggedCount={creoFlagged} />
 
       {coaData.length > 0 && (
         <Card>
@@ -5425,11 +5433,11 @@ function enrichStackRecord(rec, lastChangeout, dailyLog) {
     if (!out.periodEnd) out.periodEnd = rec.date;
     if (out.sameCarbon == null) out.sameCarbon = false;
     if (out.bedDay == null) out.bedDay = Math.max(0, daysBetween(start, rec.date));
-    const rows = (dailyLog || []).filter(r => r && r.date && r.usageKg != null);
-    const covered = rows.some(r => r.date <= start) && rows.some(r => r.date >= rec.date);
-    if (out.creoT == null && covered) {
+    const rows = (dailyLog || []).filter(r => r && r.date);
+    const usedKg = cleanUsageKg(rows, start, rec.date);
+    if (out.creoT == null && usedKg != null) {
       const inPeriod = rows.filter(r => r.date > start && r.date <= rec.date);
-      out.creoT = Math.round(inPeriod.reduce((a, r) => a + Math.max(0, r.usageKg), 0) / 100) / 10;
+      out.creoT = Math.round(usedKg / 100) / 10;
       out.workingDays = Math.round(inPeriod.reduce((a, r) => a + Math.max(0, r.workingDays || 0), 0) * 10) / 10;
     }
   }
@@ -5977,6 +5985,9 @@ function ComplianceTab({ stackData, vocC, pahC, creoModel, opLoo }) {
         </Panel>
       </div>
 
+      <div style={{ padding:"14px 16px", borderRadius:12, background:C.surface2, color:C.ink, fontSize:13, lineHeight:1.5 }}>
+        <b>Creosote tonnes corrected (v2.5.0, 23 Nov 2026).</b> Some Daily Log entries repeated an earlier day's readings or missed a tank, so a delivery on those days was counted as usage. Creosote used is now the stock balance between real readings (opening stock + deliveries - closing stock), and the trial model is calibrated on the corrected tonnes. The figure before correction is shown in brackets.
+      </div>
       {hoursFlagged.length ? (
         <div style={{ padding:"14px 16px", borderRadius:12, background:TINT.amberBg, color:C.ink, fontSize:13, lineHeight:1.5 }}>
           <b style={{ color:C.amber }}>Run-hours basis check.</b> {hoursFlagged.map(t=>t.period).join(", ")} record more than 24 active hours per working day, so their hours are not on the same basis as earlier tests (likely both plants summed, or calendar hours; P9 to P14 are estimates). Reconcile them against the charge log before the next recalibration.
@@ -5996,7 +6007,7 @@ function ComplianceTab({ stackData, vocC, pahC, creoModel, opLoo }) {
                     <td style={{ ...td, fontFamily:MONO, color:C.muted }}>{t.report || "--"}</td>
                     <td style={{ ...td, fontFamily:MONO }}>{fmtDateShort(t.date)}</td>
                     <td style={td}>{t.bedId ? t.bedId + (t.bedDay ? " - " + t.bedDay : "") : "--"}</td>
-                    <td style={{ ...td, fontFamily:MONO }}>{t.creoT != null ? Math.round(t.creoT).toLocaleString("en-GB") : "--"}</td>
+                    <td style={{ ...td, fontFamily:MONO }} title={t.creoTOriginal != null && Math.abs(t.creoTOriginal - t.creoT) >= 1 ? "Before copied-reading correction: " + Math.round(t.creoTOriginal).toLocaleString("en-GB") + " t" : undefined}>{t.creoT != null ? Math.round(t.creoT).toLocaleString("en-GB") : "--"}{t.creoTOriginal != null && Math.abs(t.creoTOriginal - t.creoT) >= 1 ? <span style={{ color:C.muted, fontSize:11 }}>{" (was " + Math.round(t.creoTOriginal).toLocaleString("en-GB") + ")"}</span> : null}</td>
                     <td style={{ ...td, fontFamily:MONO, color:t.workingDays && t.activeHrs / t.workingDays > 24 ? C.amber : C.ink, fontWeight:t.workingDays && t.activeHrs / t.workingDays > 24 ? 600 : 400 }}>{t.workingDays ? (t.activeHrs / t.workingDays).toFixed(1) : "--"}</td>
                     <td style={{ ...td, fontFamily:MONO }}>{t.stackTemp != null ? Number(t.stackTemp).toFixed(1) : "--"}</td>
                     <td style={{ ...td, fontFamily:MONO, color:vo ? C.red : C.ink, fontWeight:vo ? 600 : 400 }}>{t.voc != null ? t.voc : "--"}</td>
@@ -6256,11 +6267,20 @@ export default function App() {
   const setStackDataExtra = useCallback(nextValueOrUpdater => updateKey("cgb_stackDataExtra", nextValueOrUpdater), [updateKey]);
   // Dataset is A4-only by construction: all stack test rows in this application
   // represent Emission Point A4 (Creosote Impregnation Plant), not A1.
+  // v2.5.0: copied / incomplete Daily Log readings are rebuilt before any creosote total is taken.
+  const creoClean = useMemo(()=>cleanCreoLog(platformState.cgb_creoDailyLog), [platformState.cgb_creoDailyLog]);
   const stackData = useMemo(()=>{
     // Seed periods take precedence: drop any manually-entered duplicates (e.g. P9-P14 keyed in before v1.9.0).
     const seedPeriods = new Set(INITIAL_STACK_DATA.map(d=>d.period));
-    return [...INITIAL_STACK_DATA, ...(stackDataExtra || []).filter(d=>!seedPeriods.has(d.period))];
-  }, [stackDataExtra]);
+    // Tests entered in the app take creosote used from the cleaned log (net stock balance), so a
+    // figure saved under the old positive-only basis is recalculated whenever the log covers the period.
+    const extras = (stackDataExtra || []).filter(d=>!seedPeriods.has(d.period)).map(d => {
+      if (!d.periodStart || !d.date) return d;
+      const kg = cleanUsageKg(creoClean.rows, String(d.periodStart).slice(0,10), String(d.date).slice(0,10));
+      return kg == null ? d : { ...d, creoT: Math.round(kg / 100) / 10 };
+    });
+    return [...INITIAL_STACK_DATA, ...extras];
+  }, [stackDataExtra, creoClean]);
   const coaData = platformState.cgb_coaData;
   const setCoaData = useCallback(nextValueOrUpdater => updateKey("cgb_coaData", nextValueOrUpdater), [updateKey]);
   const chargeLog = platformState.cgb_chargeLog;
@@ -6299,7 +6319,7 @@ export default function App() {
     return last && daysBetween(last.date, new Date()) <= 2 ? last : null;
   }, [platformState.cgb_creoDailyLog]);
   const appAmbientTemp = weather ? weather.temperature_2m : latestScadaReading ? latestScadaReading.ambientC : settings.typicalTempC;
-  const creoBed = useMemo(()=>creosoteBedState(platformState.cgb_creoDailyLog, lastChangeout, settings, new Date()), [platformState.cgb_creoDailyLog, lastChangeout, settings]);
+  const creoBed = useMemo(()=>creosoteBedState(creoClean.rows, lastChangeout, settings, new Date()), [creoClean, lastChangeout, settings]);
   const appAmbientSource = weather ? "Open-Meteo live" : latestScadaReading ? "SCADA print " + latestScadaReading.date : "settings typical value";
   const appRH = settings.useConservativeRH ? 90 : (weather ? weather.relative_humidity_2m : settings.typicalRH);
   const appOperativeTemp = operativeTemp(appAmbientTemp, settings.stackTempCorrectionC ?? 10.3);
@@ -6418,10 +6438,10 @@ export default function App() {
         )}
         {activeTab==="dashboard"    && <DashboardTab    stackData={stackData} settings={settings} weather={weather} ambientOverride={appAmbientTemp} chargeLog={chargeLog} lastChangeout={lastChangeout} downtimeHrs={downtimeHrs} onDowntime={setDowntimeHrs} vocC={vocC} pahC={pahC} canEdit={canEdit} latestCarbonBatch={latestCarbonBatch} />}
         {activeTab==="cycles"       && <ChargeCyclesTab chargeLog={chargeLog} onAddCharge={c=>setChargeLog(l=>[...l,c])} onAddCharges={list=>setChargeLog(l=>[...l,...list])} onDeleteCharge={id=>setChargeLog(l=>l.filter(c=>c.id!==id))} lastChangeout={lastChangeout} settings={settings} vocC={vocC} canEdit={canEdit} />}
-        {activeTab==="stack"        && <StackTestsTab   stackData={stackData} lastChangeout={lastChangeout} onAdd={e=>setStackDataExtra(d=>[...d,enrichStackRecord(e, lastChangeout, platformState.cgb_creoDailyLog)])} settings={settings} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
+        {activeTab==="stack"        && <StackTestsTab   stackData={stackData} lastChangeout={lastChangeout} onAdd={e=>setStackDataExtra(d=>[...d,enrichStackRecord(e, lastChangeout, creoClean.rows)])} settings={settings} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} />}
         {activeTab==="thermal"      && <ThermalAnalysisTab thermalLog={thermalLog} thermalStats={thermalStats} onAddThermalEntry={entry=>setThermalLog(list=>[...list, entry])} onDeleteThermalEntry={id=>setThermalLog(list=>list.filter(entry=>entry.id!==id))} loggerLog={loggerLog} onImportLoggerData={rows=>setLoggerLog(list=>[...list, ...rows])} onClearLoggerData={()=>setLoggerLog([])} onUpdateCorrectionFactor={newDelta=>updateSetting("stackTempCorrectionC", newDelta)} settings={settings} onChangeSetting={updateSetting} canEdit={canEdit} />}
-        {activeTab==="coa"          && <CoATab onImportWorkbook={importCreosoteWorkbook} creoDeliveries={platformState.cgb_creoDeliveries} creoDailyLog={platformState.cgb_creoDailyLog} creoImportStatus={platformMeta && platformMeta.imports ? platformMeta.imports.creosote : null} coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
+        {activeTab==="coa"          && <CoATab onImportWorkbook={importCreosoteWorkbook} creoDeliveries={platformState.cgb_creoDeliveries} creoDailyLog={creoClean.rows} creoFlagged={creoClean.flaggedCount} creoImportStatus={platformMeta && platformMeta.imports ? platformMeta.imports.creosote : null} coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="carbonquality" && <CarbonQualityTab carbonCoaData={carbonCoaData} onAdd={entry=>setCarbonCoaData(d=>[...d, entry])} onDelete={id=>setCarbonCoaData(d=>d.filter(e=>e.id!==id))} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} settings={settings} />}
         {activeTab==="documents"    && <DocumentLibraryTab adminData={adminData} isAdmin={isAdmin} onDownloadDocument={downloadDocument} />}
         {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} />}
