@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { createDefaultPlatformState } from "./platformShared.js";
 import { cleanCreoLog, cleanUsageKg } from "./creoUsage.js";
+import TrialModeTab from "./trial/TrialModeTab.jsx";
 
 // ============================================================
 // BRAND TOKENS
@@ -6178,7 +6179,7 @@ function CarbonChangesTab({ history, stackData, canEdit, onRecord, onUndoLast })
 
 const NAV_AREAS = [
   { id:"overview",  label:"Overview",          tabs:[{ id:"home", label:"Summary" }, { id:"dashboard", label:"Engineering detail" }] },
-  { id:"forecast",  label:"Forecast",          tabs:[{ id:"seasonplan", label:"12-month plan" }, { id:"forecast", label:"Bed forecast" }, { id:"tempanalysis", label:"Temperature analysis" }] },
+  { id:"forecast",  label:"Forecast",          tabs:[{ id:"seasonplan", label:"12-month plan" }, { id:"forecast", label:"Bed forecast" }, { id:"tempanalysis", label:"Temperature analysis" }, { id:"trialmode", label:"Trial mode" }] },
   { id:"stack",     label:"Stack tests",       tabs:[{ id:"compliance", label:"Compliance" }, { id:"stack", label:"Test records" }, { id:"bat", label:"BAT compliance" }] },
   { id:"plant",     label:"Plant data",        tabs:[{ id:"changes", label:"Carbon changes" }, { id:"cycles", label:"Charge cycles" }, { id:"thermal", label:"Thermal monitoring" }] },
   { id:"materials", label:"Creosote & carbon", tabs:[{ id:"coa", label:"Creosote and CoA" }, { id:"carbonquality", label:"Carbon quality" }] },
@@ -6321,6 +6322,27 @@ export default function App() {
   }, [platformState.cgb_creoDailyLog]);
   const appAmbientTemp = weather ? weather.temperature_2m : latestScadaReading ? latestScadaReading.ambientC : settings.typicalTempC;
   const creoBed = useMemo(()=>creosoteBedState(creoClean.rows, lastChangeout, settings, new Date()), [creoClean, lastChangeout, settings]);
+  // v2.6.0 Trial Mode: live calibration handed to the what-if engine (read-only there).
+  // App PAH model is a*stackTemp + b*ln(t) + c; the engine uses a*ln(t) + b*T + c, so a and b swap.
+  const trialCalibration = useMemo(()=>{
+    const cal = {
+      elvVOC: VOC_ELV, elvPAH: PAH_ELV,
+      stackI: STACK_TEMP_A, stackS: STACK_TEMP_B,
+      tMonth: BOSTON_MONTHLY_TEMPS.slice(), rhMonth: BOSTON_MONTHLY_RH.slice(),
+      carbonMass0: BED_MASS,
+    };
+    if (creoModel && creoModel.ready) {
+      cal.voc = { a: creoModel.voc.a, b: creoModel.voc.b, c: creoModel.voc.c };
+      cal.pah = { a: creoModel.pah.b, b: creoModel.pah.a, c: creoModel.pah.c };
+      if (creoModel.vocLoo) cal.voc.band = Math.round(Math.exp(creoModel.vocLoo) * 100) / 100;
+      if (creoModel.pahLoo) cal.pah.band = Math.round(Math.exp(creoModel.pahLoo) * 100) / 100;
+    }
+    return cal;
+  }, [creoModel]);
+  const trialDefaults = useMemo(()=>({
+    throughput: settings.creoRateTPerDay != null ? settings.creoRateTPerDay : 11,
+    changeoutFixed: CHANGEOUT_COST_GBP - BED_MASS * 2,
+  }), [settings.creoRateTPerDay]);
   const appAmbientSource = weather ? "Open-Meteo live" : latestScadaReading ? "SCADA print " + latestScadaReading.date : "settings typical value";
   const appRH = settings.useConservativeRH ? 90 : (weather ? weather.relative_humidity_2m : settings.typicalRH);
   const appOperativeTemp = operativeTemp(appAmbientTemp, settings.stackTempCorrectionC ?? 10.3);
@@ -6446,6 +6468,7 @@ export default function App() {
         {activeTab==="carbonquality" && <CarbonQualityTab carbonCoaData={carbonCoaData} onAdd={entry=>setCarbonCoaData(d=>[...d, entry])} onDelete={id=>setCarbonCoaData(d=>d.filter(e=>e.id!==id))} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} settings={settings} />}
         {activeTab==="documents"    && <DocumentLibraryTab adminData={adminData} isAdmin={isAdmin} onDownloadDocument={downloadDocument} />}
         {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} />}
+        {activeTab==="trialmode"    && <TrialModeTab appMode calibration={trialCalibration} defaults={trialDefaults} />}
         {activeTab==="bat"          && <BATComplianceTab settings={settings} onChange={updateSetting} canEdit={canEdit} stackData={stackData} />}
         {activeTab==="modeldetails" && <ModelDetailsTab stackData={stackData} vocC={vocC} pahC={pahC} settings={settings} latestCarbonBatch={latestCarbonBatch} />}
         {activeTab==="settings"     && <SettingsTab     onRecordChangeout={()=>setChangeoutOpen(true)} settings={settings} onChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} platformMeta={platformMeta} onExportBackup={exportBackup} onImportBackup={importBackup} onResetPlatform={resetPlatform} onRunChargeImportScan={runChargeImportScan} authState={authState} onLogout={logout} onChangePassword={changePassword} onCreateUser={createUser} adminData={adminData} onDownloadDocument={downloadDocument} />}
