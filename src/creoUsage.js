@@ -12,7 +12,10 @@
 //
 // Each run of flagged rows is rebuilt from the real readings either side of it:
 //   gap usage = stock before + deliveries in the gap - stock after   (stock balance)
-// spread over the production days by the Settings day factors, with bank holidays at zero.
+// spread over the production days in proportion to the treatment charges run on each day
+// (v2.5.1: Plant 1 / Plant 2 charges from the synced charge log, weighted by the kg per charge
+// fitted on clean readings). Where the charge log does not cover a gap, the Settings day
+// factors are used instead, with bank holidays at zero.
 // A fall of less than DRIFT_KG (load-cell drift) is treated as an idle period (0 usage).
 // A balance that cannot be right (stock rose beyond drift, or more than MAX_DAY_KG per
 // production day) is replaced by the recent clean rate and marked as an estimate.
@@ -25,6 +28,11 @@ export const DRIFT_KG = 8000;
 export const MAX_DAY_KG = 45000;
 // Settings day factors (from 2025-26 readings). JS getDay(): Sun = 0.
 export const DAY_FACTORS = [0, 0.66, 1.08, 1.16, 1.05, 1.05, 0];
+// kg of creosote per charge, robust fit of 419 clean reading intervals Jan 2024 - Oct 2026
+// against the synced charge log (v2.5.1). Plant 1 = fencing/track pot, Plant 2 = poles pot.
+// The split between the two is not firm (it moves from year to year); charge count is what
+// carries the signal. Only the ratio matters for spreading a gap; totals come from the tanks.
+export const KG_PER_CHARGE = { plant1: 3191, plant2: 2626 };
 export const KNOWN_BAD_RANGES = [["2026-05-26", "2026-06-24"]];
 const BANK_HOLIDAYS = new Set([
   "2013-01-01","2013-03-29","2013-04-01","2013-05-06","2013-05-27","2013-08-26","2013-12-25","2013-12-26",
@@ -61,6 +69,21 @@ function productionDays(from, to) {
   for (let d = from; d < to; d = isoAddDays(d, 1)) out.push(d);
   return out;
 }
+// Charge log -> { byDate: Map(date -> kg-weighted charges), first, last }.
+export function buildChargeWeights(chargeLog) {
+  const byDate = new Map();
+  let first = null, last = null;
+  for (const c of chargeLog || []) {
+    if (!c || !c.date) continue;
+    const d = String(c.date).slice(0, 10);
+    const kg = KG_PER_CHARGE[c.type];
+    if (!kg) continue;
+    byDate.set(d, (byDate.get(d) || 0) + kg * (c.count || 1));
+    if (!first || d < first) first = d;
+    if (!last || d > last) last = d;
+  }
+  return byDate.size ? { byDate, first, last } : null;
+}
 function stockOf(r) {
   if (r.correctedKg != null) return r.correctedKg;
   if (r.totalKg != null) return r.totalKg;
@@ -89,7 +112,8 @@ export function flagCreoRows(rows) {
 
 // rows: Daily Log readings ({date, store1Kg..work2Kg, correctedKg, totalKg, deliveredKg, usageKg, usagePerDayKg}).
 // Returns { rows: [{...row, flag, usageCleanKg, method, gapId}], gaps: [...], flaggedCount }.
-export function cleanCreoLog(dailyLog) {
+export function cleanCreoLog(dailyLog, chargeLog) {
+  const charges = buildChargeWeights(chargeLog);
   const rows = (dailyLog || []).filter(r => r && r.date).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const flags = flagCreoRows(rows);
   const out = rows.map((r, i) => ({ ...r, flag: flags[i], usageCleanKg: r.usageKg, method: "", gapId: null }));
@@ -110,7 +134,12 @@ export function cleanCreoLog(dailyLog) {
     for (let j = s; j <= b; j++) deliveredKg += out[j].deliveredKg || 0;
     const balance = stockOf(out[a]) + deliveredKg - stockOf(out[b]);
     const days = productionDays(out[a].date, out[b].date);
-    const weightSum = days.reduce((acc, d) => acc + dayWeight(d), 0);
+    const chargeCovered = charges && days.length && days[0] >= charges.first && days[days.length - 1] <= charges.last;
+    const chargeKg = chargeCovered ? days.reduce((acc, d) => acc + (charges.byDate.get(d) || 0), 0) : 0;
+    const useCharges = chargeCovered && chargeKg > 0;
+    const w = d => useCharges ? (charges.byDate.get(d) || 0) : dayWeight(d);
+    const weightSum = days.reduce((acc, d) => acc + w(d), 0);
+    const basis = useCharges ? ", spread by charges run" : ", spread by weekday factors";
     const prodDays = days.filter(d => new Date(d + "T00:00:00Z").getUTCDay() !== 0 && !BANK_HOLIDAYS.has(d)).length;
     let method, perWeight;
     if (balance < 0 && balance >= -DRIFT_KG) { method = "Idle - level within load-cell drift"; perWeight = 0; }
@@ -118,17 +147,17 @@ export function cleanCreoLog(dailyLog) {
       const recent = out.slice(Math.max(0, a - 40), a + 1)
         .filter(r => !r.flag && r.usagePerDayKg != null && r.usagePerDayKg > 0 && r.usagePerDayKg < MAX_DAY_KG)
         .map(r => r.usagePerDayKg).sort((x, y) => x - y);
-      perWeight = recent.length ? recent[Math.floor(recent.length / 2)] : 12000;
-      method = "Estimated at the recent clean rate - stock balance not usable";
+      perWeight = useCharges ? 1 : (recent.length ? recent[Math.floor(recent.length / 2)] : 12000);
+      method = useCharges ? "Estimated from charges run x kg per charge - stock balance not usable" : "Estimated at the recent clean rate - stock balance not usable";
     } else if (weightSum <= 0) { method = "Stock balance (no working days - on next real reading)"; perWeight = null; }
-    else { method = "Stock balance between real readings"; perWeight = balance / weightSum; }
+    else { method = "Stock balance between real readings" + basis; perWeight = balance / weightSum; }
     for (let j = s; j <= b; j++) {
-      const w = productionDays(out[j - 1].date, out[j].date).reduce((acc, d) => acc + dayWeight(d), 0);
-      out[j].usageCleanKg = perWeight == null ? (j === b ? Math.max(0, balance) : 0) : Math.round(perWeight * w);
+      const wj = productionDays(out[j - 1].date, out[j].date).reduce((acc, d) => acc + w(d), 0);
+      out[j].usageCleanKg = perWeight == null ? (j === b ? Math.max(0, balance) : 0) : Math.round(perWeight * wj);
       out[j].method = method + (j === b ? " (next real reading)" : "");
       out[j].gapId = gapId;
     }
-    gaps.push({ gapId, from: out[a].date, to: out[b].date, flaggedRows: b - s, deliveredKg, balanceKg: balance, method });
+    gaps.push({ gapId, from: out[a].date, to: out[b].date, flaggedRows: b - s, deliveredKg, balanceKg: balance, chargeKg: chargeCovered ? chargeKg : null, method });
   }
   return { rows: out, gaps, flaggedCount: flags.filter(Boolean).length };
 }
