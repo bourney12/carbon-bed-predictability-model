@@ -1,7 +1,7 @@
 // TrialModeTab.jsx - "Trial Mode" for the carbon bed predictability model.
 // Build a modified abatement train, forecast carbon life, cost and compliance against the
 // current system. Self-contained: React only, inline SVG charts, scoped CSS. ASCII source.
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   DEFAULT_SITE,
   DEVICE_TYPES,
@@ -152,6 +152,21 @@ const FIELDS = {
     { k: "capex", label: "Installed cost", min: 0, max: 300000, step: 1000, unit: GBP },
   ],
 };
+
+// ---------------------------------------------------------------------------
+// dashboard levers: each starts a trial from the current system with one change
+// ---------------------------------------------------------------------------
+const SUMMER = MONTHS.map((x, i) => i >= 4 && i <= 8);
+const LEVERS = [
+  { id: "leadlag", group: "Carbon arrangement", title: "Lead/lag beds", does: "Second vessel in series. The lead is emptied at the trigger and the lag moves up.", conf: "High confidence", apply: (s) => { s.arrangement = "leadlag"; s.beds = [newBed(s.beds[0].mass, s.beds[0].type), newBed(s.beds[0].mass, s.beds[0].type)]; } },
+  { id: "fanmove", group: "Temperature", title: "Move the fan after the bed", does: "Fan heat is added after the carbon instead of before it.", conf: "Needs measuring", apply: (s) => s.devices.push(makeDevice("fanmove")) },
+  { id: "tankvent", group: "Tanks", title: "Tank vent dampers + P/V valves", does: "Stop the extraction pulling air through the hot work tanks and the storage tanks.", conf: "Needs measuring", apply: (s) => s.devices.push(makeDevice("tankvent")) },
+  { id: "ventcond", group: "Tanks", title: "Work tank vent condenser", does: "Cool the work tank vent gas to 35 \u00B0C before it joins the main duct.", conf: "Needs measuring", apply: (s) => s.devices.push(makeDevice("ventcond")) },
+  { id: "condenser", group: "Gas cooling", title: "Chilled condenser + reheat", does: "Cool the gas to 6 \u00B0C so naphthalene and PAH drop out, then lift it 3 \u00B0C.", conf: "Medium", apply: (s) => { s.devices.push(makeDevice("condenser", { pos: "pre" })); s.devices.push(makeDevice("reheat", { pos: "post", dT: 3 })); } },
+  { id: "partial", group: "Changeout practice", title: "Change the top half only", does: "Replace the inlet layer at each changeout and keep the outlet carbon.", conf: "Medium", apply: (s) => { s.partialFrac = 0.5; } },
+  { id: "schedule", group: "Operations", title: "Schedule heavy steps for cool hours", does: "Move vacuum releases and transfers out of summer afternoons (May-Sep).", conf: "Medium", apply: (s) => s.devices.push(makeDevice("schedule", { months: SUMMER.slice() })) },
+  { id: "vsd", group: "Flow", title: "Fan VSD to nameplate flow", does: "Bring the overspeed fan back to nameplate flow.", conf: "Needs measuring", apply: (s) => s.devices.push(makeDevice("vsd")) },
+];
 
 const SITE_GROUPS = [
   {
@@ -307,6 +322,43 @@ font-family:Inter,Segoe UI,system-ui,-apple-system,sans-serif;color:var(--ink);b
 .tm .tgl .k{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
 .tm .tgl.on .k{left:17px}
 .tm .tag{font-size:10.5px;padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--mut);margin-left:6px}
+.tm .dash{display:flex;flex-direction:column;gap:16px}
+.tm .toprow{display:flex;flex-wrap:wrap;gap:14px;align-items:stretch}
+.tm .hero{flex:2 1 520px;background:#0f2a44;color:#fff;border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.tm.dark .hero{background:#133a60}
+.tm .hero .eye{font-size:12px;color:#b9d3ee;font-weight:600}
+.tm .hero h3{font-size:21px;line-height:1.25;margin:0;color:#fff}
+.tm .hero p{margin:0;font-size:14px;color:#dbe7f3;max-width:780px}
+.tm .hero .ks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:700px){.tm .hero .ks{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tm .hero .k{background:rgba(255,255,255,.08);border-radius:10px;padding:10px 12px}
+.tm .hero .k b{display:block;font-size:21px}
+.tm .hero .k span{font-size:12px;color:#b9d3ee}
+.tm .hero button{height:42px;padding:0 18px;border-radius:8px;font-weight:600}
+.tm .hero button.w{background:#fff;color:#0f2a44;border-color:#fff}
+.tm .hero button.o{background:transparent;color:#fff;border-color:rgba(255,255,255,.4)}
+.tm .basec{flex:1 1 280px;display:flex;flex-direction:column;gap:10px}
+.tm .basec .g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.tm .basec .g b{display:block;font-size:19px}
+.tm .rkw{overflow-x:auto}
+.tm .rk{display:grid;grid-template-columns:30px minmax(0,2.4fr) minmax(0,1.4fr) 66px 70px 64px 96px 72px 120px 52px;gap:12px;align-items:center;padding:10px 6px;border-bottom:1px solid var(--line);min-width:1000px}
+.tm .rk.h{font-size:11.5px;color:var(--mut);font-weight:600}
+.tm .rk.r{cursor:pointer}
+.tm .rk.r:hover,.tm .rk.r:focus-visible{background:var(--soft);outline:none}
+.tm .num{text-align:right;font-variant-numeric:tabular-nums}
+.tm .bar{height:8px;background:var(--soft);border-radius:4px;overflow:hidden}
+.tm .bar>i{display:block;height:8px;border-radius:4px;background:var(--ok)}
+.tm .mini{display:flex;align-items:flex-end;gap:2px;height:34px}
+.tm .mini i{flex:1 1 0;border-radius:2px 2px 0 0}
+.tm .lev{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.tm .lv{text-align:left;display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.tm .lv:hover{border-color:var(--acc)}
+.tm .lv .t{font-weight:650;font-size:14.5px}
+.tm .lv .go{margin-top:auto;color:var(--acc);font-weight:600;font-size:12.5px}
+.tm .seg button.pl{border-radius:999px;height:34px;padding:0 14px}
+.tm .step{display:flex;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px}
+.tm .step .n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--soft);color:var(--acc);font-weight:700;display:flex;align-items:center;justify-content:center}
+.tm .bhead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
 `;
 
 // ---------------------------------------------------------------------------
@@ -551,7 +603,23 @@ export default function TrialModeTab(props) {
   const [scenarios, setScenarios] = useState(() => (stored && stored.scenarios && stored.scenarios.length ? stored.scenarios : presetScenarios()));
   const [activeId, setActiveId] = useState(() => (stored && stored.activeId ? stored.activeId : scenarios[1] ? scenarios[1].id : "baseline"));
   const [compareId, setCompareId] = useState(() => (stored && stored.compareId ? stored.compareId : "baseline"));
-  const [view, setView] = useState("build");
+  const [view, setView] = useState("dash");
+  const [dashSort, setDashSort] = useState("saving");
+  const [dashFilter, setDashFilter] = useState("all");
+  const rankRef = useRef([]);
+  const rootRef = useRef(null);
+  const firstView = useRef(true);
+  useEffect(() => {
+    if (firstView.current) {
+      firstView.current = false;
+      return;
+    }
+    try {
+      if (rootRef.current && rootRef.current.getBoundingClientRect().top < 0) rootRef.current.scrollIntoView({ block: "start" });
+    } catch (e) {
+      /* ignore */
+    }
+  }, [view, activeId]);
   const [metric, setMetric] = useState("voc");
   const [refMonth, setRefMonth] = useState(6);
   const [openDev, setOpenDev] = useState(null);
@@ -590,6 +658,42 @@ export default function TrialModeTab(props) {
   const refDoy = MONTH_MID[refMonth];
   const train = useMemo(() => runTrain(site, active, refDoy), [site, active, refDoy]);
   const brk = useMemo(() => capacityBreakdown(site, active, comp, refDoy), [site, active, comp, refDoy]);
+
+  // ---- dashboard: every trial and every lever against the current system
+  const dashOn = view === "dash";
+  const dash = useMemo(() => {
+    if (!dashOn) return null;
+    const baseS = scenarios.find((x) => x.id === "baseline") || scenarios[0];
+    const run = (sc) => {
+      const sim = simulate(site, sc);
+      return { s: sc, sum: summarise(site, sc, sim), life: lifeByMonth(site, sc) };
+    };
+    const all = scenarios.map(run);
+    const base = all.find((r) => r.s.id === baseS.id);
+    const avgLife = (r) => r.life.reduce((a, x) => a + x.days, 0) / 12;
+    all.forEach((r) => {
+      r.saving = base.sum.total - r.sum.total;
+      r.lifeAvg = avgLife(r);
+    });
+    const levers = LEVERS.map((lv) => {
+      const c = clone(baseS);
+      c.locked = false;
+      lv.apply(c);
+      const r = run(c);
+      return { lv, r, saving: base.sum.total - r.sum.total, lifeGain: avgLife(r) / avgLife(base) - 1 };
+    });
+    return { all, base, levers };
+  }, [dashOn, site, scenarios]);
+  if (dash) {
+    rankRef.current = dash.all
+      .filter((r) => r.s.id !== dash.base.s.id)
+      .sort((a, b) => b.saving - a.saving)
+      .map((r) => ({ id: r.s.id, name: r.s.name }));
+  }
+  const openTrial = (id) => {
+    setActiveId(id);
+    setView("build");
+  };
 
   // ---- scenario editing helpers
   const update = (fn) => {
@@ -637,6 +741,19 @@ export default function TrialModeTab(props) {
     setScenarios(rest);
     if (activeId === id) setActiveId(rest[rest.length - 1].id);
     if (compareId === id) setCompareId("baseline");
+  };
+  const startFromLever = (lv) => {
+    const baseS = scenarios.find((x) => x.id === "baseline") || scenarios[0];
+    const c = clone(baseS);
+    c.id = newId();
+    c.locked = false;
+    c.name = lv.title;
+    c.devices.forEach((d) => (d.id = newId()));
+    c.beds.forEach((b) => (b.id = newId()));
+    lv.apply(c);
+    setScenarios((l) => l.concat([c]));
+    setActiveId(c.id);
+    setView("build");
   };
   const resetAll = () => {
     const p = presetScenarios();
@@ -1339,30 +1456,219 @@ export default function TrialModeTab(props) {
     </div>
   );
 
-  const methodView = <MethodNotes site={site} />;
-
-  return (
-    <div className={"tm" + (props.appMode ? " app" : dark ? " dark" : "")}>
-      <style>{CSS}</style>
-      <div className="row">
-        <div>
-          <h2>Trial Mode</h2>
-          <div className="mut">Add equipment or change the carbon arrangement and see what it does to carbon life, cost and compliance.</div>
+  // ---- dashboard view
+  let dashView = null;
+  if (dash) {
+    const base = dash.base;
+    const bs = base.sum;
+    const trials = dash.all.filter((r) => r.s.id !== base.s.id);
+    const ranked = trials.slice().sort((a, b) => b.saving - a.saving);
+    const best = ranked[0];
+    const bestSave = best ? best.saving : 0;
+    const bestOver = trials.reduce((m, r) => Math.min(m, r.sum.over), 9999);
+    const filters = {
+      all: () => true,
+      noenergy: (r) => r.sum.energyCost <= 0 && r.sum.otherCost === 0,
+      lowcapex: (r) => r.sum.capex <= 40000,
+      compliance: (r) => r.sum.over < bs.over,
+    };
+    const shown = trials.filter(filters[dashFilter] || filters.all);
+    shown.sort((a, b) =>
+      dashSort === "compliance" ? a.sum.over - b.sum.over || b.saving - a.saving : dashSort === "life" ? (b.sum.avgInt || 9999) - (a.sum.avgInt || 9999) || b.saving - a.saving : b.saving - a.saving
+    );
+    const maxSave = Math.max(1, bestSave);
+    const tagsFor = (r) => {
+      const t = [];
+      if (best && r.s.id === best.s.id && r.saving > 0) t.push(["Best saving", "g"]);
+      if (r.sum.over === bestOver && r.sum.over < bs.over) t.push(["Best compliance", "g"]);
+      if (r.sum.energyCost > 20000) t.push(["Energy heavy", "a"]);
+      else if (r.sum.energyCost <= 0 && r.sum.otherCost === 0) t.push(["No added energy", "g"]);
+      if (r.sum.over > bs.over) t.push(["More days over ELV", "a"]);
+      const ty = (r.s.devices || []).filter((d) => d.on !== false).map((d) => d.type);
+      if (ty.indexOf("tankvent") >= 0 || ty.indexOf("ventcond") >= 0) t.push(["Needs vent flow", ""]);
+      if (ty.indexOf("fanmove") >= 0) t.push(["Needs fan \u0394T", ""]);
+      if (ty.indexOf("vsd") >= 0) t.push(["Needs fan kW", ""]);
+      return t;
+    };
+    const julBase = base.life[6].days;
+    const arrLabel = (sc) => {
+      const kg = sc.beds.reduce((a, b) => a + b.mass, 0);
+      const a = sc.arrangement === "single" ? "Single" : sc.arrangement === "leadlag" ? "Lead/lag" : ARRANGEMENTS[sc.arrangement].label;
+      return a + " " + fmt1(kg / 1000) + " t" + ((sc.partialFrac || 1) < 1 && sc.arrangement !== "leadlag" ? ", " + Math.round(sc.partialFrac * 100) + "% change" : "");
+    };
+    const heroText = (r) => {
+      const t = r.sum.kg / 1000;
+      const t0 = bs.kg / 1000;
+      const carbon = t <= t0 * 0.55 ? "halves carbon use (" + fmt1(t0) + " \u2192 " + fmt1(t) + " t/yr)" : t < t0 ? "cuts carbon from " + fmt1(t0) + " to " + fmt1(t) + " t/yr" : "uses " + fmt1(t) + " t of carbon a year";
+      const comp2 = r.sum.over < bs.over ? "cuts days over an ELV from " + bs.over + " to " + r.sum.over : r.sum.over > bs.over ? "but days over an ELV rise from " + bs.over + " to " + r.sum.over : "keeps days over an ELV at " + bs.over;
+      const pb = r.sum.capex > 0 && r.saving > 0 ? " Pays back in " + fmt1(r.sum.capex / r.saving) + " years on " + money(r.sum.capex) + "." : r.sum.capex > 0 ? "" : " No capital cost entered.";
+      return "Saves " + money(r.saving) + " a year against the current system, " + carbon + " and " + comp2 + "." + pb;
+    };
+    dashView = (
+      <div className="dash">
+        <div className="toprow">
+          {best && best.saving > 0 ? (
+            <div className="hero">
+              <div className="eye">{"Best option so far \u00B7 ranked by annual saving"}</div>
+              <h3>{best.s.name}</h3>
+              <p>{heroText(best)}</p>
+              <div className="ks">
+                <div className="k"><b>{money(best.saving)}</b><span>saved per year</span></div>
+                <div className="k"><b>{(best.sum.avgInt ? fmtInt(best.sum.avgInt) : ">365") + " days"}</b><span>{"between changeouts (was " + (bs.avgInt ? fmtInt(bs.avgInt) : ">365") + ")"}</span></div>
+                <div className="k"><b>{fmt1(best.sum.kg / 1000) + " t"}</b><span>{"carbon per year (was " + fmt1(bs.kg / 1000) + ")"}</span></div>
+                <div className="k"><b>{best.sum.over + " days"}</b><span>{"over an ELV (was " + bs.over + ")"}</span></div>
+              </div>
+              <div className="row">
+                <button className="w" onClick={() => openTrial(best.s.id)}>{"Open this trial \u203A"}</button>
+                <button className="o" onClick={() => setView("compare")}>Full cost table</button>
+              </div>
+            </div>
+          ) : (
+            <div className="hero">
+              <div className="eye">No trial beats the current system yet</div>
+              <h3>Start a trial from a lever below, or build your own.</h3>
+              <div className="row"><button className="w" onClick={() => { duplicate(blankScenario(), "New trial"); setView("build"); }}>+ New trial</button></div>
+            </div>
+          )}
+          <div className="card basec">
+            <div className="row"><span className="dot" style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--base)", display: "inline-block" }} /><h3 style={{ margin: 0 }}>{base.s.name}</h3></div>
+            <div className="mut small">{arrLabel(base.s) + ". Typical weather, " + site.throughput + " t/day, central estimate."}</div>
+            <div className="g">
+              <div><b>{bs.changeouts}</b><span className="mut small">changeouts / yr</span></div>
+              <div><b>{(bs.avgInt ? fmtInt(bs.avgInt) : ">365") + " d"}</b><span className="mut small">between changeouts</span></div>
+              <div><b>{fmt1(bs.kg / 1000) + " t"}</b><span className="mut small">carbon / yr</span></div>
+              <div><b>{money(bs.total)}</b><span className="mut small">running cost / yr</span></div>
+              <div><b className={bs.over > 0 ? "bad" : ""}>{bs.over}</b><span className="mut small">days over an ELV</span></div>
+              <div><b>{julBase + " d"}</b><span className="mut small">bed life from a July start</span></div>
+            </div>
+            <div className="mut small" style={{ marginTop: "auto", borderTop: "1px solid var(--line)", paddingTop: 8 }}>Inputs marked (confirm) on Assumptions are placeholders.</div>
+          </div>
         </div>
-        <span className="sp" />
-        <label className="small mut row" style={{ gap: 6 }}>
-          Throughput
-          <input type="number" style={{ width: 60 }} step="0.5" value={site.throughput} onChange={(e) => setS("throughput", parseFloat(e.target.value) || 0)} />
-          t/day
-        </label>
-        <label className="small mut row" style={{ gap: 6 }}>
-          <input type="checkbox" checked={site.cautious} onChange={(e) => setS("cautious", e.target.checked)} />
-          Cautious trigger (upper band)
-        </label>
-        {props.dark === undefined && !props.appMode ? <button onClick={() => setDark(!darkState)}>{dark ? "Light" : "Dark"}</button> : null}
-      </div>
 
-      <div className="row" style={{ marginTop: 12, gap: 6 }}>
+        <div className="card">
+          <div className="row" style={{ marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>All trials against the current system</h3>
+            <span className="sp" />
+            <span className="small mut">Rank by</span>
+            <div className="seg">
+              {[["saving", "Annual saving"], ["compliance", "Compliance"], ["life", "Carbon life"]].map((o) => (
+                <button key={o[0]} className={"pl" + (dashSort === o[0] ? " on" : "")} onClick={() => setDashSort(o[0])}>{o[1]}</button>
+              ))}
+            </div>
+          </div>
+          <div className="row" style={{ marginBottom: 6 }}>
+            <div className="seg">
+              {[["all", "All trials"], ["noenergy", "No added energy"], ["lowcapex", "Capex " + GBP + "40k or less"], ["compliance", "Fewer days over ELV"]].map((o) => (
+                <button key={o[0]} className={"pl" + (dashFilter === o[0] ? " on" : "")} onClick={() => setDashFilter(o[0])}>{o[1]}</button>
+              ))}
+            </div>
+            <span className="small mut">{shown.length + " of " + trials.length + " trials"}</span>
+          </div>
+          <div className="rkw">
+            <div className="rk h">
+              <span>#</span><span>Trial</span><span>Saving / yr vs current</span><span className="num">Changes / yr</span><span className="num">Days between</span><span className="num">Carbon t/yr</span><span className="num">Capex / payback</span><span className="num">Days over ELV</span><span>Life by start month</span><span />
+            </div>
+            {shown.map((r, i) => {
+              const pb = r.sum.capex > 0 && r.saving > 0 ? fmt1(r.sum.capex / r.saving) + " yr" : r.sum.capex > 0 ? "no payback" : "-";
+              return (
+                <div key={r.s.id} className="rk r" role="button" tabIndex={0} onClick={() => openTrial(r.s.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openTrial(r.s.id); } }}>
+                  <span className="mut" style={{ fontWeight: 700 }}>{i + 1}</span>
+                  <span style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>{r.s.name}</div>
+                    <div className="row" style={{ gap: 4, marginTop: 3 }}>
+                      <span className="chip">{arrLabel(r.s)}</span>
+                      {tagsFor(r).map((t) => <span key={t[0]} className={"chip " + t[1]}>{t[0]}</span>)}
+                    </div>
+                  </span>
+                  <span>
+                    <div style={{ fontWeight: 700, fontSize: 14.5 }} className={r.saving < 0 ? "bad" : ""}>{money(r.saving)}</div>
+                    <div className="bar"><i style={{ width: Math.max(0, Math.round((r.saving / maxSave) * 100)) + "%" }} /></div>
+                  </span>
+                  <span className="num">{r.sum.changeouts}</span>
+                  <span className="num">{r.sum.avgInt ? fmtInt(r.sum.avgInt) : ">365"}</span>
+                  <span className="num">{fmt1(r.sum.kg / 1000)}</span>
+                  <span className="num">{money(r.sum.capex)}<div className="mut small">{pb}</div></span>
+                  <span className={"num " + (r.sum.over < bs.over ? "good" : r.sum.over > bs.over ? "bad" : "")} style={{ fontWeight: 700 }}>{r.sum.over}</span>
+                  <span className="mini" role="img" aria-label={"Bed life by start month, Jan to Dec: " + r.life.map((x) => x.days).join(", ") + " days"}>
+                    {r.life.map((x, j) => <i key={j} style={{ height: Math.round((Math.min(400, x.days) / 400) * 30) + 3, background: x.days > julBase ? "var(--acc)" : "var(--base)" }} />)}
+                  </span>
+                  <span style={{ color: "var(--acc)", fontWeight: 600, textAlign: "right" }}>{"Open \u203A"}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mut small" style={{ marginTop: 8 }}>Saving = carbon + energy + other running cost vs the current system. Mini bars: fresh-carbon life by start month (Jan-Dec); blue where it beats the current system's July life. Click a row to open it in the builder.</div>
+        </div>
+
+        <div>
+          <div className="row" style={{ marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>Explore by lever</h3>
+            <span className="small mut">Each card starts a new trial from the current system with that one change.</span>
+          </div>
+          <div className="lev">
+            {dash.levers.map((x) => (
+              <button key={x.lv.id} className="lv" onClick={() => startFromLever(x.lv)}>
+                <span className="row" style={{ gap: 6, width: "100%" }}>
+                  <span className="small mut" style={{ fontWeight: 600 }}>{x.lv.group}</span>
+                  <span className="sp" />
+                  <span className={"chip " + (x.lv.conf === "High confidence" ? "g" : x.lv.conf === "Needs measuring" ? "a" : "")}>{x.lv.conf}</span>
+                </span>
+                <span className="t">{x.lv.title}</span>
+                <span className="small">{x.lv.does}</span>
+                <span className={"small " + (x.saving > 0 ? "good" : "bad")} style={{ fontWeight: 600 }}>
+                  {(x.saving >= 0 ? "Saves " : "Costs ") + money(Math.abs(x.saving)) + "/yr \u00B7 carbon " + fmt1(bs.kg / 1000) + " \u2192 " + fmt1(x.r.sum.kg / 1000) + " t \u00B7 ELV days " + bs.over + " \u2192 " + x.r.sum.over}
+                </span>
+                <span className="go">{"Try it \u203A"}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="row" style={{ marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>What would firm these numbers up</h3>
+            <span className="small mut">Highest value first. Each replaces a placeholder on Assumptions.</span>
+            <span className="sp" />
+            <button onClick={() => setView("assume")}>{"Go to Assumptions \u203A"}</button>
+          </div>
+          <div className="lev">
+            {[
+              ["Carbon inlet VOC + PAH test", "Sets condenser, tank and interstage results."],
+              ["Air flow in each tank vent branch", "Work tanks first. Decides the tank damper and vent condenser case."],
+              ["Temperature rise across the fan", "Testo before and after. Sizes the fan-after-bed gain."],
+              ["Fan absorbed kW", "Sets the VSD energy saving (" + site.fanPower0 + " kW assumed)."],
+            ].map((m, i) => (
+              <div key={m[0]} className="step"><span className="n">{i + 1}</span><span><b>{m[0]}</b><div className="small mut">{m[1]}</div></span></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- builder header: back to dashboard, verdict vs comparison, next best
+  const rankList = rankRef.current || [];
+  const rankIdx = rankList.findIndex((x) => x.id === active.id);
+  const nextBest = rankList.find((x) => x.id !== active.id && (rankIdx < 0 || rankList.indexOf(x) > rankIdx)) || null;
+  const buildHeader = (
+    <div className="bhead">
+      <button onClick={() => setView("dash")}>{"\u2039 Dashboard"}</button>
+      <b style={{ fontSize: 16 }}>{active.name}</b>
+      {rankIdx >= 0 ? <span className="small mut">{"#" + (rankIdx + 1) + " of " + rankList.length + " by annual saving"}</span> : null}
+      {!locked && active.id !== comp.id ? (
+        <span className="row" style={{ gap: 4 }}>
+          <span className={"chip " + (saving > 0 ? "g" : saving < 0 ? "r" : "")}>{(saving >= 0 ? "Saves " : "Costs ") + money(Math.abs(saving)) + "/yr vs " + (comp.id === "baseline" ? "current system" : comp.name.length > 30 ? comp.name.slice(0, 28) + "..." : comp.name)}</span>
+          {payback ? <span className="chip g">{"Payback " + fmt1(payback) + " yr"}</span> : null}
+          <span className={"chip " + (sA.over < sC.over ? "g" : sA.over > sC.over ? "r" : "")}>{sA.over + " days over ELV (was " + sC.over + ")"}</span>
+        </span>
+      ) : null}
+      <span className="sp" />
+      {nextBest ? <button onClick={() => setActiveId(nextBest.id)}>{(rankIdx < 0 ? "Best: " : "Next best: ") + nextBest.name.slice(0, 40) + " \u203A"}</button> : null}
+    </div>
+  );
+
+  const pillsRow = (
+      <div className="row" style={{ marginBottom: 12, gap: 6 }}>
         {scenarios.map((s) => (
           <span key={s.id} className={"pill" + (s.id === activeId ? " act" : "")} onClick={() => setActiveId(s.id)}>
             <span className="dot" style={{ background: s.id === "baseline" ? "var(--base)" : s.id === activeId ? "var(--acc)" : "var(--line)" }} />
@@ -1398,13 +1704,39 @@ export default function TrialModeTab(props) {
         <button className="ghost small" onClick={() => setScenarios((l) => l.concat(extraPresets()))}>+ Add 23 Nov example trials</button>
         <button className="ghost small" onClick={resetAll}>Restore example trials</button>
       </div>
+  );
+
+  const methodView = <MethodNotes site={site} />;
+
+  return (
+    <div ref={rootRef} className={"tm" + (props.appMode ? " app" : dark ? " dark" : "")}>
+      <style>{CSS}</style>
+      <div className="row">
+        <div>
+          <h2>Trial Mode</h2>
+          <div className="mut">See which changes to the abatement system pay back, then open any of them to build on it.</div>
+        </div>
+        <span className="sp" />
+        <label className="small mut row" style={{ gap: 6 }}>
+          Throughput
+          <input type="number" style={{ width: 60 }} step="0.5" value={site.throughput} onChange={(e) => setS("throughput", parseFloat(e.target.value) || 0)} />
+          t/day
+        </label>
+        <label className="small mut row" style={{ gap: 6 }}>
+          <input type="checkbox" checked={site.cautious} onChange={(e) => setS("cautious", e.target.checked)} />
+          Cautious trigger (upper band)
+        </label>
+        <button className="pri" onClick={() => { duplicate(blankScenario(), "New trial"); setView("build"); }}>+ New trial</button>
+        {props.dark === undefined && !props.appMode ? <button onClick={() => setDark(!darkState)}>{dark ? "Light" : "Dark"}</button> : null}
+      </div>
 
       <div className="tabs">
-        {[["build", "Build and forecast"], ["compare", "Compare trials"], ["assume", "Assumptions"], ["method", "How it works"]].map((t) => (
-          <button key={t[0]} className={view === t[0] ? "act" : ""} onClick={() => setView(t[0])}>{t[1]}</button>
+        {[["dash", "Dashboard"], ["build", "Trial builder"], ["assume", "Assumptions"], ["method", "How it works"]].map((t) => (
+          <button key={t[0]} className={view === t[0] || (t[0] === "dash" && view === "compare") ? "act" : ""} onClick={() => setView(t[0])}>{t[1]}</button>
         ))}
       </div>
-      {view === "build" ? buildView : view === "compare" ? compareView : view === "assume" ? assumeView : methodView}
+
+      {view === "dash" ? (dashView || null) : view === "build" ? <div>{buildHeader}{pillsRow}{buildView}</div> : view === "compare" ? <div><div className="bhead"><button onClick={() => setView("dash")}>{"\u2039 Dashboard"}</button><b>Full cost table</b></div>{compareView}</div> : view === "assume" ? assumeView : methodView}
     </div>
   );
 }
