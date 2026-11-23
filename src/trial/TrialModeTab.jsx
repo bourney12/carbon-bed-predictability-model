@@ -24,6 +24,7 @@ import {
   dev as makeDevice,
   psatW,
   tankBaseline,
+  tankHeadspace,
   extraPresets,
 } from "./trialEngine.js";
 
@@ -122,8 +123,16 @@ const FIELDS = {
     { k: "capex", label: "Installed cost", min: 0, max: 100000, step: 500, unit: GBP },
   ],
   tankvent: [
-    { k: "sweepCut", label: "Cut in continuous air drawn through tank vents", min: 0, max: 1, step: 0.01, pct: true, key: true },
+    { k: "sweepCutWork", label: "Cut in air drawn through work tank vents", min: 0, max: 1, step: 0.01, pct: true, key: true },
+    { k: "sweepCutStor", label: "Cut in air drawn through storage tank vents", min: 0, max: 1, step: 0.01, pct: true },
     { k: "capex", label: "Installed cost", min: 0, max: 100000, step: 500, unit: GBP },
+  ],
+  ventcond: [
+    { k: "tOut", label: "Vent gas outlet temperature", min: 5, max: 90, step: 1, unit: DEG, key: true },
+    { k: "onWork", label: "Fitted to work tank vents (1 = yes)", min: 0, max: 1, step: 1 },
+    { k: "onStor", label: "Fitted to storage tank vents (1 = yes)", min: 0, max: 1, step: 1 },
+    { k: "kw", label: "Power (pumps / chiller)", min: 0, max: 30, step: 0.5, unit: "kW" },
+    { k: "capex", label: "Installed cost", min: 0, max: 150000, step: 1000, unit: GBP },
   ],
   schedule: [
     { k: "shift", label: "Share of daily emission load moved to the cool half of the day", min: 0, max: 0.5, step: 0.01, pct: true, key: true },
@@ -192,18 +201,22 @@ const SITE_GROUPS = [
     ],
   },
   {
-    title: "Creosote storage tanks (vents and deliveries go to extraction)",
-    note: "This load is already inside the measured carbon inlet; these inputs only split it out so tank measures can be tested. Vent sweep flow and tank temperature set almost all of it - measure the air velocity in the tank vent branch.",
+    title: "Creosote tanks (all vents and deliveries go to extraction)",
+    note: "2 storage tanks (60-80 C) and 2 work tanks held at 116 C (steam exchanger, creosote up to ~140 C at its outlet). This load is already inside the measured carbon inlet; these inputs split it out so tank measures can be tested. The air drawn through the work tank vents sets most of it - measure the velocity in each vent branch.",
     fields: [
-      { k: "tankHeated", label: "Tanks held warm (1 = yes, 0 = no)", min: 0, max: 1, step: 1 },
-      { k: "tankT", label: "Held tank temperature (confirm)", unit: DEG, min: 10, max: 80, step: 1 },
-      { k: "tankSolar", label: "Headspace above ambient from sun", unit: DEG, min: 0, max: 20, step: 0.5 },
-      { k: "tankSweep", label: "Air drawn through tank vents (confirm)", unit: "m3/h", min: 0, max: 2000, step: 10 },
+      { k: "tankWorkT", label: "Work tank headspace temperature", unit: DEG, min: 60, max: 150, step: 1 },
+      { k: "tankWorkSweep", label: "Air drawn through work tank vents (confirm)", unit: "m3/h", min: 0, max: 300, step: 1 },
+      { k: "ventJWork", label: "Work vent gas temp. where it joins the main duct", unit: DEG, min: 10, max: 150, step: 1 },
+      { k: "chargesDay", label: "Treatment charges (confirm)", unit: "/day", min: 0, max: 10, step: 0.5 },
+      { k: "returnM3", label: "Creosote returned to work tanks per charge (confirm)", unit: "m3", min: 0, max: 100, step: 1 },
+      { k: "tankStorT", label: "Storage tank temperature", unit: DEG, min: 20, max: 100, step: 1 },
+      { k: "tankStorSweep", label: "Air drawn through storage tank vents (confirm)", unit: "m3/h", min: 0, max: 1000, step: 5 },
+      { k: "ventJStor", label: "Storage vent gas temp. where it joins the main duct", unit: DEG, min: 10, max: 100, step: 1 },
       { k: "tankSat", label: "Headspace approach to equilibrium", min: 0.1, max: 1, step: 0.05, pct: true },
-      { k: "tankXNaph", label: "Naphthalene mole fraction in stock", min: 0, max: 0.4, step: 0.01 },
+      { k: "tankXLight", label: "Light (phenols/cresols/indene) mole fraction", min: 0, max: 0.3, step: 0.01 },
+      { k: "tankXNaph", label: "Naphthalene mole fraction", min: 0, max: 0.4, step: 0.01 },
       { k: "tankXMnap", label: "Methylnaphthalenes mole fraction", min: 0, max: 0.3, step: 0.01 },
       { k: "tankXHeavy", label: "3-ring PAH mole fraction", min: 0, max: 0.5, step: 0.01 },
-      { k: "tankLight20", label: "Light VOC in saturated headspace at 20 C", unit: "mg/m3", min: 0, max: 2000, step: 10 },
       { k: "deliveriesYr", label: "Road tanker deliveries", unit: "/yr", min: 0, max: 400, step: 1 },
       { k: "deliveryM3", label: "Volume per delivery (= vapour displaced)", unit: "m3", min: 5, max: 40, step: 1 },
       { k: "airBlowM3", label: "Air blown through at end of offload", unit: "m3", min: 0, max: 200, step: 5 },
@@ -731,7 +744,7 @@ export default function TrialModeTab(props) {
       summary = <span className="chip">{fmtInt(d.flow) + " m3/h"}</span>;
     } else if (d.type === "source") {
       summary = <span className="chip g">{"-" + Math.round(d.cutVOC * 100) + "% / -" + Math.round(d.cutPAH * 100) + "%"}</span>;
-    } else if (d.type === "vapbal" || d.type === "tankvent") {
+    } else if (d.type === "vapbal" || d.type === "tankvent" || d.type === "ventcond") {
       summary = (
         <span className="row" style={{ gap: 4 }}>
           <span className="chip">{"Tanks " + fmt1(train.tankKgDay) + " kg/day (was " + fmt1(train.tankKgDayBase) + ")"}</span>
@@ -1267,16 +1280,17 @@ export default function TrialModeTab(props) {
           <h3>Tank load today (from the inputs on the left)</h3>
           <table>
             <tbody>
-              <tr><td>Headspace temperature (mid-July / mid-January)</td><td>{fmt1(runTrain(site, scenarios[0], 196).tankT) + " / " + fmt1(runTrain(site, scenarios[0], 15).tankT) + " " + DEG}</td></tr>
-              <tr><td>Continuous vent sweep</td><td>{fmt1(tankB.sweepKgDay) + " kg/day"}</td></tr>
-              <tr><td>Deliveries (displacement + air blow)</td><td>{fmtInt(tankB.delKgYr) + " kg/yr"}</td></tr>
+              <tr><td>Work tanks - air drawn through vents</td><td>{fmt1(tankB.src.workSweep) + " kg/day"}</td></tr>
+              <tr><td>Work tanks - cylinder returns + make-up</td><td>{fmt1(tankB.src.workDisp) + " kg/day"}</td></tr>
+              <tr><td>Storage tanks - air drawn through vents</td><td>{fmt1(tankB.src.storSweep) + " kg/day"}</td></tr>
+              <tr><td>Storage tanks - deliveries (displacement + air blow)</td><td>{fmtInt(tankB.delKgYr) + " kg/yr"}</td></tr>
               <tr><td>Total tank load to the carbon</td><td><b>{fmt1(tankB.totKgDay) + " kg/day"}</b></td></tr>
               <tr><td>Share of carbon inlet load (all / PAH)</td><td><b>{Math.round(tankB.share * 100) + "% / " + Math.round(tankB.sharePAH * 100) + "%"}</b></td></tr>
               <tr><td>Carbon inlet load (from inlet composition)</td><td>{fmt1(tankB.inletKgDay) + " kg/day"}</td></tr>
             </tbody>
           </table>
           {tankB.overflow.length ? <div className="warn"><div className="b" style={{ background: "var(--bad)" }} /><div>{"Tank inputs exceed the assumed inlet for " + tankB.overflow.join(", ") + " - make the two consistent."}</div></div> : null}
-          <div className="mut small">A delivery displaces only ~{site.deliveryM3} m3 of headspace into ~{fmtInt(site.flow0 * site.hoursPerDay)} m3 of daily extraction, so deliveries matter far less than air drawn continuously through the vents.</div>
+          <div className="mut small">{"Headspace at " + site.tankWorkT + DEG + " holds ~" + fmt1(Object.values(tankHeadspaceC(site, "work")).reduce((a, b) => a + b, 0) / 1000) + " g/m3 of vapour vs ~" + fmt1(Object.values(tankHeadspaceC(site, "stor")).reduce((a, b) => a + b, 0) / 1000) + " g/m3 in storage, so each m3/h drawn through a work tank vent matters ~" + Math.round(Object.values(tankHeadspaceC(site, "work")).reduce((a, b) => a + b, 0) / Math.max(1, Object.values(tankHeadspaceC(site, "stor")).reduce((a, b) => a + b, 0))) + "x more. Deliveries displace only ~" + site.deliveryM3 + " m3 each."}</div>
         </div>
         <div className="card">
           <h3>Climate - Boston monthly means</h3>
@@ -1395,6 +1409,10 @@ export default function TrialModeTab(props) {
   );
 }
 
+function tankHeadspaceC(site, g) {
+  return tankHeadspace(site, g, 10).c;
+}
+
 function deltaTxt(d, unit, dp) {
   if (!isFinite(d) || Math.abs(d) < (dp ? 0.05 : 0.5)) return "no change";
   const v = dp ? fmt1(Math.abs(d)) : fmtInt(Math.abs(d));
@@ -1436,8 +1454,8 @@ function MethodNotes(props) {
         <p>Creosote mist blinds the inlet face and carries heavy PAH. A high-efficiency coalescer protects the carbon.</p>
         <h4>Carbon grade <span className="tag">indicative</span></h4>
         <p>Coal-based grades suit the larger PAH molecules; coconut shell suits light VOC. High-activity and hydrophobic grades trade price for capacity or humidity tolerance. Factors are editable and should be confirmed with supplier isotherms and CoAs.</p>
-        <h4>Tank vents and tanker deliveries <span className="tag">physics - sweep flow not measured</span></h4>
-        <p>The storage tank vents and tanker displacement go to the extraction, so their vapour is already inside the measured carbon inlet. Trial Mode estimates it (headspace concentration from Raoult's law at tank temperature, times the air drawn continuously through the vents plus the volume displaced at each delivery) and subtracts it from the inlet to leave the process share. A vent damper with a pressure/vacuum valve cuts the continuous sweep; vapour balancing returns displaced vapour to the tanker. Deliveries are small against ~200,000 m3/day of extraction; the continuous sweep can matter, depending on flow and tank temperature.</p>
+        <h4>Tank vents, cylinder returns and deliveries <span className="tag">physics - vent flows not measured</span></h4>
+        <p>All tank vents and tanker displacement go to the extraction, so their vapour is already inside the measured carbon inlet. Trial Mode estimates it for the storage tanks (60-80 C) and the work tanks (116 C): headspace concentration from Raoult's law with liquid vapour-pressure curves anchored at 25 C and the boiling point, times the air drawn continuously through each vent plus the volume displaced (cylinder returns and make-up into the work tanks, deliveries into storage). Vent gas that cools in its own line before the main duct is capped at saturation at the junction temperature. The total is subtracted from the inlet to leave the process share. Dampers with pressure/vacuum valves cut the continuous draw; a vent condenser caps the vent gas at its outlet temperature; vapour balancing returns delivery displacement to the tanker. At 116 C the work tank headspace holds roughly 7x the vapour of storage and ~50x that at 45 C, so the work tank vents dominate.</p>
         <h4>Schedule heavy steps for cooler hours <span className="tag">medium - estimate</span></h4>
         <p>Moving a share of the day's emission load from the warm half of the day to the cool half lowers the load-weighted ambient by about 1.27 x share x the day-night half-range, which feeds the stack temperature through the site regression. Mass load is unchanged.</p>
         <h4>Fan after the bed <span className="tag">high - physics</span></h4>

@@ -60,20 +60,28 @@ export const DEFAULT_SITE = {
   rhMonth: [87, 84, 80, 76, 74, 74, 74, 76, 79, 84, 88, 88],
   // Half the day-night ambient range by month (deg C). Estimate for coastal Lincolnshire - confirm.
   diurnalAmp: [2.5, 3.0, 3.5, 4.0, 4.5, 4.5, 4.5, 4.5, 4.0, 3.5, 2.5, 2.5],
-  // Creosote storage tanks. Vents and tanker displacement go to the extraction (confirmed 23 Nov 2026).
+  // Creosote tanks. All vents and tanker displacement go to the extraction (confirmed 23 Nov 2026).
   // Their load is already inside the measured carbon inlet; these inputs split it out so it can be cut.
-  tankHeated: 1, // 1 = tanks held warm, 0 = follow ambient
-  tankT: 45, // deg C held temperature (confirm)
-  tankSolar: 6, // deg C headspace above ambient from sun (unheated tanks, or when ambient + solar > held)
-  tankSweep: 150, // m3/h drawn continuously through the tank vents by the extraction (confirm - key unknown)
+  // 2 storage tanks normally 60-80 C; 2 work tanks held at 116 C (fed from a 6 barg steam tubular
+  // exchanger, creosote possibly ~140 C at the exchanger outlet).
+  tankStorT: 70, // deg C storage tank liquid/headspace
+  tankWorkT: 116, // deg C work tank headspace (try 125-140 for the exchanger return)
+  tankSolar: 6, // deg C storage headspace above ambient from sun, if that is warmer than tankStorT
+  tankStorSweep: 50, // m3/h drawn continuously through the storage tank vents (confirm)
+  tankWorkSweep: 20, // m3/h drawn continuously through the work tank vents (confirm - key unknown)
+  ventJStor: 70, // deg C vent gas where it joins the main duct (= tank T means no cooling in the vent line)
+  ventJWork: 116,
   tankSat: 0.6, // headspace approach to equilibrium (1 = fully saturated)
-  tankXNaph: 0.12, // mole fractions in the stored creosote (Raoult)
+  tankXLight: 0.05, // mole fractions in the creosote (Raoult). Light = phenols/cresols/indene lump
+  tankXNaph: 0.12,
   tankXMnap: 0.08,
   tankXHeavy: 0.2,
-  tankLight20: 100, // mg/m3 light VOC in an equilibrium headspace at 20 C (doubles per 10 C)
   deliveriesYr: 143, // road tankers per year (~ throughput x 365 / 28 t)
-  deliveryM3: 26, // m3 creosote per delivery (= headspace vapour displaced)
+  deliveryM3: 26, // m3 creosote per delivery (= storage headspace displaced)
   airBlowM3: 40, // m3 air blown through at the end of offload (line clearing)
+  chargesDay: 3, // treatment charges per day (confirm from charge log)
+  returnM3: 30, // m3 creosote returned from the cylinder to the work tanks per charge (confirm)
+  creoDensity: 1.08, // t/m3, for storage-to-work transfer volume
 };
 
 export const SPECIES = ["light", "naph", "mnap", "heavy"];
@@ -158,11 +166,18 @@ export const DEVICE_TYPES = {
     defaults: { capture: 0.95, blowCut: 0, capex: 12000, opex: 0 },
   },
   tankvent: {
-    label: "Tank vent damper + pressure/vacuum valve",
+    label: "Tank vent dampers + pressure/vacuum valves",
     short: "TankVent",
     positional: false,
-    blurb: "Stops the extraction pulling air continuously through the tank headspace. The vent stays connected but only opens on pressure (filling, breathing), so displacement still goes to abatement.",
-    defaults: { sweepCut: 0.9, capex: 8000, opex: 0 },
+    blurb: "Stops the extraction pulling air continuously through the tank headspaces. Vents stay connected but only open on pressure (filling, cylinder returns, breathing), so displaced vapour still goes to abatement.",
+    defaults: { sweepCutStor: 0.9, sweepCutWork: 0.9, capex: 12000, opex: 0 },
+  },
+  ventcond: {
+    label: "Tank vent condenser",
+    short: "VentCond",
+    positional: false,
+    blurb: "Small water-cooled condenser on the tank vent line before it joins the main duct. Hot, concentrated, low-flow vent gas is where condensing works best; condensate drains back to the tank. Pure-component saturation is used, so removal is conservative.",
+    defaults: { tOut: 35, onWork: 1, onStor: 0, kw: 1, capex: 25000, opex: 0 },
   },
   schedule: {
     label: "Schedule heavy-emission steps for cooler hours",
@@ -213,31 +228,47 @@ function csatSpecies(sp, T) {
   return ((P * v.mw) / (8.314 * TK)) * 1000;
 }
 
-function csatLiquid(sp, T) {
-  // vapour pressure of the (sub-cooled) liquid, which is what Raoult's law needs for a solution.
-  // Naphthalene curve is for the solid: correct with its entropy of fusion (mp 80.3 C).
-  let cs = csatSpecies(sp, T);
-  if (sp === "naph") {
-    const TK = T + 273.15;
-    if (TK < 353.4) cs *= Math.exp(6.46 * (353.4 / TK - 1));
-  }
-  return cs;
+// Liquid vapour pressure for hot tanks, ln(P/Pa) = A - B/T(K), anchored at 25 C (sub-cooled liquid)
+// and at the normal boiling point so it holds up to ~140 C. Naphthalene: 25 C sub-cooled 36 Pa,
+// bp 218 C (4.1 kPa at 116 C vs NIST Antoine 4.8 kPa). 1-methylnaphthalene: 8.5 Pa, bp 245 C.
+// 3-ring lump: 0.6 Pa, bp ~307 C. Light lump (phenols/cresols/indene): 100 Pa, bp ~187 C, MW 110.
+export const VAPL = {
+  light: { A: 24.276, B: 5865, mw: 110 },
+  naph: { A: 23.798, B: 6027, mw: 128.2 },
+  mnap: { A: 24.264, B: 6596, mw: 142.2 },
+  heavy: { A: 24.259, B: 7385, mw: 160 },
+};
+function csatL(sp, T) {
+  const v = VAPL[sp];
+  const TK = T + 273.15;
+  return ((Math.exp(v.A - v.B / TK) * v.mw) / (8.314 * TK)) * 1000;
+}
+function csatCond(sp, T) {
+  // what can stay as vapour after cooling to T (pure component, so conservative): the lower of
+  // the solid curve (below the melting point) and the liquid curve
+  if (sp === "light") return csatL(sp, T);
+  return Math.min(csatSpecies(sp, T), csatL(sp, T));
 }
 
 // ---------------------------------------------------------------------------
 // Storage tank sub-model: continuous vent sweep + delivery displacement
 // ---------------------------------------------------------------------------
 
-export function tankHeadspace(site, tAmb) {
-  const solar = tAmb + site.tankSolar;
-  const T = site.tankHeated ? Math.max(site.tankT, solar) : solar;
-  const x = { naph: site.tankXNaph, mnap: site.tankXMnap, heavy: site.tankXHeavy };
-  const c = { light: site.tankLight20 * Math.pow(2, (T - 20) / 10) * site.tankSat };
-  for (let i = 0; i < PAH_SPECIES.length; i++) {
-    const sp = PAH_SPECIES[i];
-    c[sp] = site.tankSat * x[sp] * csatLiquid(sp, T);
+export function tankHeadspace(site, group, tAmb, condT) {
+  // group "stor" | "work". Returns headspace temperature and the concentration (mg/m3) of the vent
+  // gas when it reaches the main duct (after any vent-line cooling or vent condenser).
+  const T = group === "work" ? Math.max(site.tankWorkT, tAmb) : Math.max(site.tankStorT, tAmb + site.tankSolar);
+  const x = { light: site.tankXLight, naph: site.tankXNaph, mnap: site.tankXMnap, heavy: site.tankXHeavy };
+  const tj = group === "work" ? site.ventJWork : site.ventJStor;
+  const cap = Math.min(tj === undefined || tj === null ? T : tj, condT === undefined || condT === null ? T : condT, T);
+  const c = {};
+  const c0 = {};
+  for (let i = 0; i < SPECIES.length; i++) {
+    const sp = SPECIES[i];
+    c0[sp] = site.tankSat * x[sp] * csatL(sp, T);
+    c[sp] = cap < T ? Math.min(c0[sp], csatCond(sp, cap)) : c0[sp];
   }
-  return { T, c };
+  return { T, c, c0, cap };
 }
 
 export function deliveriesOn(site, doy) {
@@ -246,20 +277,27 @@ export function deliveriesOn(site, doy) {
 }
 
 export function tankLoad(site, tAmb, doy, red) {
-  // mg/day of each species sent to the extraction by the tanks
-  const r = red || { sweep: 1, disp: 1, blow: 1 };
-  const hs = tankHeadspace(site, tAmb);
-  const sweepM3 = site.tankSweep * site.hoursPerDay * r.sweep;
+  // mg/day of each species sent to the extraction by the tanks, split by source
+  const r = Object.assign({ sweepS: 1, sweepW: 1, disp: 1, blow: 1, condS: null, condW: null }, red || {});
+  const hsS = tankHeadspace(site, "stor", tAmb, r.condS);
+  const hsW = tankHeadspace(site, "work", tAmb, r.condW);
   const nDel = deliveriesOn(site, doy);
-  const dispM3 = nDel * (site.deliveryM3 * r.disp + site.airBlowM3 * r.blow);
+  const vol = {
+    storSweep: site.tankStorSweep * site.hoursPerDay * r.sweepS,
+    storDel: nDel * (site.deliveryM3 * r.disp + site.airBlowM3 * r.blow),
+    workSweep: site.tankWorkSweep * site.hoursPerDay * r.sweepW,
+    // creosote coming back from the cylinders, plus the day's make-up pumped in from storage
+    workDisp: site.chargesDay * site.returnM3 + site.throughput / (site.creoDensity || 1.08),
+  };
   const mass = {};
-  const sweepMass = {};
+  const src = { storSweep: 0, storDel: 0, workSweep: 0, workDisp: 0 };
   for (let i = 0; i < SPECIES.length; i++) {
     const sp = SPECIES[i];
-    mass[sp] = hs.c[sp] * (sweepM3 + dispM3);
-    sweepMass[sp] = hs.c[sp] * sweepM3;
+    const m = { storSweep: hsS.c[sp] * vol.storSweep, storDel: hsS.c[sp] * vol.storDel, workSweep: hsW.c[sp] * vol.workSweep, workDisp: hsW.c[sp] * vol.workDisp };
+    mass[sp] = m.storSweep + m.storDel + m.workSweep + m.workDisp;
+    Object.keys(src).forEach((k) => (src[k] += m[k]));
   }
-  return { mass, sweepMass, nDel, hs };
+  return { mass, src, nDel, hsS, hsW, vol };
 }
 
 const tankBaseCache = typeof WeakMap !== "undefined" ? new WeakMap() : null;
@@ -268,14 +306,12 @@ export function tankBaseline(site) {
   // arrangement. Subtracted from the measured inlet to leave the process share.
   if (tankBaseCache && tankBaseCache.has(site)) return tankBaseCache.get(site);
   const acc = { light: 0, naph: 0, mnap: 0, heavy: 0 };
-  const accSweep = { light: 0, naph: 0, mnap: 0, heavy: 0 };
+  const src = { storSweep: 0, storDel: 0, workSweep: 0, workDisp: 0 };
   for (let d = 0; d < 365; d++) {
     const cl = climateDay(site, d);
     const tl = tankLoad(site, cl.tAmb, d);
-    for (let i = 0; i < SPECIES.length; i++) {
-      acc[SPECIES[i]] += tl.mass[SPECIES[i]] / 365;
-      accSweep[SPECIES[i]] += tl.sweepMass[SPECIES[i]] / 365;
-    }
+    for (let i = 0; i < SPECIES.length; i++) acc[SPECIES[i]] += tl.mass[SPECIES[i]] / 365;
+    Object.keys(src).forEach((k) => (src[k] += tl.src[k] / 365 / 1e6));
   }
   const vol = site.flow0 * site.hoursPerDay;
   const conc = {};
@@ -287,7 +323,6 @@ export function tankBaseline(site) {
     proc[sp] = Math.max(0, site.inlet[sp] - conc[sp]);
     kgDay[sp] = acc[sp] / 1e6;
   }
-  const sweepKgDay = SPECIES.reduce((s, k) => s + accSweep[k], 0) / 1e6;
   const totKgDay = SPECIES.reduce((s, k) => s + kgDay[k], 0);
   const inletKgDay = (sum(site.inlet, SPECIES) * vol) / 1e6;
   const res = {
@@ -295,8 +330,11 @@ export function tankBaseline(site) {
     proc,
     kgDay,
     totKgDay,
-    sweepKgDay,
-    delKgYr: (totKgDay - sweepKgDay) * 365,
+    src,
+    sweepKgDay: src.storSweep + src.workSweep,
+    delKgYr: src.storDel * 365,
+    workKgDay: src.workSweep + src.workDisp,
+    storKgDay: src.storSweep + src.storDel,
     inletKgDay,
     share: totKgDay / Math.max(1e-9, inletKgDay),
     sharePAH: (kgDay.naph + kgDay.mnap + kgDay.heavy) / Math.max(1e-9, (sum(site.inlet, PAH_SPECIES) * vol) / 1e6),
@@ -487,7 +525,8 @@ export function runTrain(site, scenario, doy) {
   let shift = 0;
   let fanAfter = false;
   const cut = { light: 1, naph: 1, mnap: 1, heavy: 1 };
-  const red = { sweep: 1, disp: 1, blow: 1 };
+  const red = { sweepS: 1, sweepW: 1, disp: 1, blow: 1, condS: null, condW: null };
+  let kwExtra = 0;
   for (let i = 0; i < devs.length; i++) {
     const d = devs[i];
     if (d.type === "vsd") massRet *= d.massRetained;
@@ -499,7 +538,15 @@ export function runTrain(site, scenario, doy) {
       red.disp *= 1 - d.capture;
       red.blow *= 1 - d.blowCut;
     }
-    if (d.type === "tankvent") red.sweep *= 1 - d.sweepCut;
+    if (d.type === "tankvent") {
+      red.sweepS *= 1 - (d.sweepCutStor !== undefined ? d.sweepCutStor : d.sweepCut || 0);
+      red.sweepW *= 1 - (d.sweepCutWork !== undefined ? d.sweepCutWork : d.sweepCut || 0);
+    }
+    if (d.type === "ventcond") {
+      if (d.onWork) red.condW = red.condW === null ? d.tOut : Math.min(red.condW, d.tOut);
+      if (d.onStor) red.condS = red.condS === null ? d.tOut : Math.min(red.condS, d.tOut);
+      kwExtra += d.kw || 0;
+    }
     if (d.type === "schedule") shift = Math.min(0.5, shift + d.shift);
     if (d.type === "fanmove") fanAfter = true;
   }
@@ -523,7 +570,7 @@ export function runTrain(site, scenario, doy) {
   const fanHeat = fanAfter ? 0 : site.fanHeat0 * Math.pow(Q / site.flow0, 2);
   let st = { T: tSrc - site.fanHeat0, pv: pvAmb, c, Q };
   const ctx = { site, tAmb: cl.tAmb };
-  let kw = 0;
+  let kw = kwExtra;
   const steps = [{ label: "Extraction", T: st.T, pv: st.pv, voc: sum(st.c, SPECIES), pah: sum(st.c, PAH_SPECIES) }];
   const pre = devs.filter((d) => DEVICE_TYPES[d.type].positional && d.pos === "pre");
   const post = devs.filter((d) => DEVICE_TYPES[d.type].positional && d.pos !== "pre");
@@ -556,7 +603,9 @@ export function runTrain(site, scenario, doy) {
     tankKgDay,
     tankKgDayBase,
     deliveries: tl.nDel,
-    tankT: tl.hs.T,
+    tankStorT: tl.hsS.T,
+    tankWorkT: tl.hsW.T,
+    tankSrc: tl.src,
     tBed: st.T,
     rhBed,
     rhBase,
@@ -916,8 +965,9 @@ export function warningsFor(site, scenario, summ, life) {
   if (devs.some((d) => d.type === "vsd" && d.flow < site.flow0 * 0.55)) w.push({ lvl: "amber", t: "Flow below ~55% of current: check capture velocity at every extraction point before relying on this." });
   const tb = tankBaseline(site);
   if (tb.overflow.length) w.push({ lvl: "red", t: "Tank inputs give more " + tb.overflow.join(", ") + " than the assumed carbon inlet holds. Lower the tank sweep / headspace inputs or raise the inlet composition - the two must be consistent." });
-  if (devs.some((d) => d.type === "vapbal" || d.type === "tankvent")) w.push({ lvl: "info", t: "Tanks send ~" + tb.totKgDay.toFixed(1) + " kg/day to the carbon today (" + Math.round(tb.share * 100) + "% of the inlet load; vent sweep " + tb.sweepKgDay.toFixed(1) + " kg/day, deliveries " + Math.round(tb.delKgYr) + " kg/yr). The vent sweep flow (" + site.tankSweep + " m3/h) is assumed - measure the velocity in the tank vent branch to firm this up." });
-  if (devs.some((d) => d.type === "tankvent")) w.push({ lvl: "amber", t: "A tank vent damper changes how the tanks are protected against over/under-pressure and how fugitive vapour is captured. Size the P/V valve to the fill rate and thermal breathing, and check it against the COMAH Safety Report and permit before installing." });
+  if (devs.some((d) => d.type === "vapbal" || d.type === "tankvent" || d.type === "ventcond")) w.push({ lvl: "info", t: "Tanks send ~" + tb.totKgDay.toFixed(1) + " kg/day to the carbon today (" + Math.round(tb.share * 100) + "% of the inlet load, " + Math.round(tb.sharePAH * 100) + "% of the PAH): work tanks " + tb.workKgDay.toFixed(1) + " kg/day, storage " + tb.storKgDay.toFixed(1) + " kg/day. The vent sweep flows (work " + site.tankWorkSweep + ", storage " + site.tankStorSweep + " m3/h) are assumed - measure the velocity in each tank vent branch." });
+  if (devs.some((d) => d.type === "tankvent")) w.push({ lvl: "amber", t: "Tank vent dampers change how the tanks are protected against over/under-pressure (including the cylinder returns and steam heating) and how fugitive vapour is captured. Size the P/V valves to the fill/return rate and thermal breathing, and check against the COMAH Safety Report and permit before installing." });
+  if (devs.some((d) => d.type === "ventcond")) w.push({ lvl: "amber", t: "Vent condenser: condensate (naphthalene solidifies below 80 C) can block a cold vent line. Keep the condenser and drain trace-heated above ~85 C on the condensate side or design for melt-out, and never let it restrict tank venting." });
   if ((scenario.partialFrac || 1) < 1 && scenario.arrangement !== "leadlag") w.push({ lvl: "amber", t: "Partial changeout leaves part-loaded carbon at the outlet side. The model counts its loading against the whole bed but not where it sits; in practice the outlet carbon can bleed slowly. Confirm with an outlet test in the week after the first partial change." });
   if (scenario.trigMode === "interstage" && scenario.arrangement === "leadlag") {
     if (summ.byInter === 0 && summ.changeouts > 0) w.push({ lvl: "info", t: "Every changeout is still set by the stack backstop, not the interstage reading: with the site-calibrated breakthrough curve the lead is only part-loaded when the stack nears the ELV. The gain here comes from running the stack to the measured " + Math.round((scenario.backstop || 0.95) * 100) + "% backstop instead of the 80% planning trigger." });
@@ -954,10 +1004,11 @@ export function presetScenarios() {
 // Added 23 Nov 2026: tank vents/deliveries, scheduling, fan position, interstage, partial changeout
 export function extraPresets() {
   return [
-    { id: newId(), name: "Tank vent damper + vapour balancing", arrangement: "single", beds: [bed()], devices: [dev("tankvent"), dev("vapbal")], vesselCapex: 0 },
+    { id: newId(), name: "Work tank vent condenser 35 C", arrangement: "single", beds: [bed()], devices: [dev("ventcond")], vesselCapex: 0 },
+    { id: newId(), name: "Tank vent dampers + work tank vent condenser", arrangement: "single", beds: [bed()], devices: [dev("tankvent"), dev("ventcond")], vesselCapex: 0 },
     { id: newId(), name: "Single bed - change top half", arrangement: "single", partialFrac: 0.5, beds: [bed()], devices: [], vesselCapex: 0 },
     { id: newId(), name: "Fan after bed + summer scheduling", arrangement: "single", beds: [bed()], devices: [dev("fanmove"), dev("schedule", { months: MONTHS.map((x, i) => i >= 4 && i <= 8) })], vesselCapex: 0 },
-    { id: newId(), name: "Lead/lag + tank damper + fan after bed + summer scheduling", arrangement: "leadlag", beds: [bed(), bed()], devices: [dev("tankvent"), dev("fanmove"), dev("schedule", { months: MONTHS.map((x, i) => i >= 4 && i <= 8) })], vesselCapex: 0 },
+    { id: newId(), name: "Lead/lag + tank dampers + vent condenser + fan after bed + summer scheduling", arrangement: "leadlag", beds: [bed(), bed()], devices: [dev("tankvent"), dev("ventcond"), dev("fanmove"), dev("schedule", { months: MONTHS.map((x, i) => i >= 4 && i <= 8) })], vesselCapex: 0 },
   ];
 }
 
