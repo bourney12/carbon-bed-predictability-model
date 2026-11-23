@@ -23,6 +23,8 @@ import {
   newId,
   dev as makeDevice,
   psatW,
+  tankBaseline,
+  extraPresets,
 } from "./trialEngine.js";
 
 const DEG = "\u00B0C";
@@ -114,6 +116,23 @@ const FIELDS = {
     { k: "cutPAH", label: "Cut in naphthalene / PAH reaching extraction", min: 0, max: 0.8, step: 0.01, pct: true },
     { k: "capex", label: "Cost", min: 0, max: 200000, step: 1000, unit: GBP },
   ],
+  vapbal: [
+    { k: "capture", label: "Displaced vapour returned to tanker", min: 0, max: 1, step: 0.01, pct: true, key: true },
+    { k: "blowCut", label: "End-of-offload air blow stopped / diverted", min: 0, max: 1, step: 0.05, pct: true },
+    { k: "capex", label: "Installed cost", min: 0, max: 100000, step: 500, unit: GBP },
+  ],
+  tankvent: [
+    { k: "sweepCut", label: "Cut in continuous air drawn through tank vents", min: 0, max: 1, step: 0.01, pct: true, key: true },
+    { k: "capex", label: "Installed cost", min: 0, max: 100000, step: 500, unit: GBP },
+  ],
+  schedule: [
+    { k: "shift", label: "Share of daily emission load moved to the cool half of the day", min: 0, max: 0.5, step: 0.01, pct: true, key: true },
+    { k: "opex", label: "Running cost (e.g. shift premium) if run all year", min: 0, max: 100000, step: 500, unit: GBP + "/yr" },
+    { k: "capex", label: "One-off cost", min: 0, max: 100000, step: 500, unit: GBP },
+  ],
+  fanmove: [
+    { k: "capex", label: "Installed cost (ductwork, fan relocation)", min: 0, max: 200000, step: 1000, unit: GBP, key: true },
+  ],
   custom: [
     { k: "remVOC", label: "Light VOC removed", min: 0, max: 0.95, step: 0.01, pct: true, key: true },
     { k: "remPAH", label: "Naphthalene / PAH removed", min: 0, max: 0.95, step: 0.01, pct: true },
@@ -170,6 +189,24 @@ const SITE_GROUPS = [
       { k: "stackI", label: "Stack temp = a + b x ambient: a", unit: DEG, min: 0, max: 25, step: 0.1 },
       { k: "stackS", label: "Stack temp regression: b", min: 0.3, max: 1.2, step: 0.01 },
       { k: "dailySD", label: "Day-to-day weather swing", unit: DEG, min: 0, max: 6, step: 0.5 },
+    ],
+  },
+  {
+    title: "Creosote storage tanks (vents and deliveries go to extraction)",
+    note: "This load is already inside the measured carbon inlet; these inputs only split it out so tank measures can be tested. Vent sweep flow and tank temperature set almost all of it - measure the air velocity in the tank vent branch.",
+    fields: [
+      { k: "tankHeated", label: "Tanks held warm (1 = yes, 0 = no)", min: 0, max: 1, step: 1 },
+      { k: "tankT", label: "Held tank temperature (confirm)", unit: DEG, min: 10, max: 80, step: 1 },
+      { k: "tankSolar", label: "Headspace above ambient from sun", unit: DEG, min: 0, max: 20, step: 0.5 },
+      { k: "tankSweep", label: "Air drawn through tank vents (confirm)", unit: "m3/h", min: 0, max: 2000, step: 10 },
+      { k: "tankSat", label: "Headspace approach to equilibrium", min: 0.1, max: 1, step: 0.05, pct: true },
+      { k: "tankXNaph", label: "Naphthalene mole fraction in stock", min: 0, max: 0.4, step: 0.01 },
+      { k: "tankXMnap", label: "Methylnaphthalenes mole fraction", min: 0, max: 0.3, step: 0.01 },
+      { k: "tankXHeavy", label: "3-ring PAH mole fraction", min: 0, max: 0.5, step: 0.01 },
+      { k: "tankLight20", label: "Light VOC in saturated headspace at 20 C", unit: "mg/m3", min: 0, max: 2000, step: 10 },
+      { k: "deliveriesYr", label: "Road tanker deliveries", unit: "/yr", min: 0, max: 400, step: 1 },
+      { k: "deliveryM3", label: "Volume per delivery (= vapour displaced)", unit: "m3", min: 5, max: 40, step: 1 },
+      { k: "airBlowM3", label: "Air blown through at end of offload", unit: "m3", min: 0, max: 200, step: 5 },
     ],
   },
   {
@@ -667,6 +704,7 @@ export default function TrialModeTab(props) {
   };
   const rh = (st) => Math.min(100, (100 * st.pv) / psatW(st.T));
 
+  const tankB = tankBaseline(site);
   const devs = active.devices;
   const preDevs = devs.filter((d) => DEVICE_TYPES[d.type].positional && d.pos === "pre");
   const postDevs = devs.filter((d) => DEVICE_TYPES[d.type].positional && d.pos !== "pre");
@@ -693,6 +731,17 @@ export default function TrialModeTab(props) {
       summary = <span className="chip">{fmtInt(d.flow) + " m3/h"}</span>;
     } else if (d.type === "source") {
       summary = <span className="chip g">{"-" + Math.round(d.cutVOC * 100) + "% / -" + Math.round(d.cutPAH * 100) + "%"}</span>;
+    } else if (d.type === "vapbal" || d.type === "tankvent") {
+      summary = (
+        <span className="row" style={{ gap: 4 }}>
+          <span className="chip">{"Tanks " + fmt1(train.tankKgDay) + " kg/day (was " + fmt1(train.tankKgDayBase) + ")"}</span>
+          <span className="chip">{Math.round(tankB.share * 100) + "% of inlet load today"}</span>
+        </span>
+      );
+    } else if (d.type === "schedule") {
+      summary = <span className="chip g">{"Load-weighted stack " + fmt1(train.tShift * site.stackS) + DEG + " in " + MONTHS[refMonth]}</span>;
+    } else if (d.type === "fanmove") {
+      summary = <span className="chip g">{"Bed " + fmt1(site.fanHeat0) + DEG + " cooler (no fan heat)"}</span>;
     }
     if (d.on === false) summary = <span className="chip">Bypassed - not in this forecast</span>;
     else if (d.months && d.months.some((x) => x === false)) {
@@ -812,7 +861,7 @@ export default function TrialModeTab(props) {
           </div>
         </div>
       ) : (
-        <button disabled={locked} onClick={() => setAdding(pos)}>{pos === "glob" ? "+ system-wide change (VSD, source reduction)" : pos === "pre" ? "+ add device before the fan" : "+ add device after the fan"}</button>
+        <button disabled={locked} onClick={() => setAdding(pos)}>{pos === "glob" ? "+ system-wide change (VSD, source, tanks, scheduling, fan position)" : pos === "pre" ? "+ add device before the fan" : "+ add device after the fan"}</button>
       )}
     </div>
   );
@@ -876,6 +925,32 @@ export default function TrialModeTab(props) {
             <div className="mut small">{CARBON_TYPES[b.type].note}</div>
           </div>
         ))}
+        <div className="card" style={{ padding: 8, marginBottom: 6 }}>
+          <b className="small">Changeout practice</b>
+          {active.arrangement === "leadlag" ? (
+            <div>
+              <div className="seg" style={{ margin: "6px 0" }}>
+                <button className={active.trigMode !== "interstage" ? "on" : ""} disabled={locked} onClick={() => update((s) => Object.assign(s, { trigMode: "stack" }))}>Predicted stack trigger</button>
+                <button className={active.trigMode === "interstage" ? "on" : ""} disabled={locked} onClick={() => update((s) => Object.assign(s, { trigMode: "interstage", leadFrac: s.leadFrac || 0.5, backstop: s.backstop || 0.95, interCapex: s.interCapex === undefined ? 15000 : s.interCapex }))}>Interstage analyser</button>
+              </div>
+              {active.trigMode === "interstage" ? (
+                <div>
+                  <Field f={{ label: "Change when lead outlet reaches", min: 0.05, max: 0.95, step: 0.05, pct: true, tag: "of inlet" }} value={active.leadFrac || 0.5} disabled={locked} onChange={(v) => update((s) => Object.assign(s, { leadFrac: v }))} />
+                  <Field f={{ label: "Stack backstop (measured)", min: 0.5, max: 1, step: 0.05, pct: true, tag: "of ELV" }} value={active.backstop || 0.95} disabled={locked} onChange={(v) => update((s) => Object.assign(s, { backstop: v }))} />
+                  <Field f={{ label: "Analyser + sample port cost", min: 0, max: 60000, step: 500, unit: GBP }} value={active.interCapex || 0} disabled={locked} onChange={(v) => update((s) => Object.assign(s, { interCapex: v }))} />
+                  <div className="mut small">{"Lead outlet now: " + Math.round(((yA[refDoy] && yA[refDoy].leadOut) || 0) * 100) + "% of inlet on " + MONTHS[refMonth] + " mid-month. Events set by interstage this year: " + sA.byInter + " of " + sA.changeouts + "."}</div>
+                </div>
+              ) : (
+                <div className="mut small">Carbon is changed when the predicted stack reaches the trigger on the Assumptions screen.</div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <Field f={{ label: "Carbon replaced at each changeout (inlet layer first)", min: 0.25, max: 1, step: 0.05, pct: true }} value={active.partialFrac || 1} disabled={locked} onChange={(v) => update((s) => Object.assign(s, { partialFrac: v }))} />
+              <div className="mut small">100% = full changeout. Below 100% only the inlet layer is replaced; the rest stays in with its loading.</div>
+            </div>
+          )}
+        </div>
         <div className="row">
           <button disabled={locked || active.arrangement === "single" || active.beds.length >= 4} onClick={() => update((s) => Object.assign(s, { beds: s.beds.concat([newBed(s.beds[0].mass, s.beds[0].type)]) }))}>+ add vessel</button>
           <span className="sp" />
@@ -912,8 +987,8 @@ export default function TrialModeTab(props) {
           <div className="hd" style={{ cursor: "default" }}>
             <Icon type="in" />
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600 }}>Extraction (all points) + old scrubber shell</div>
-              <div className="mut small">{fmt1(train.steps[0].T) + DEG + " | VOC " + fmtInt(train.steps[0].voc) + " mg/m3 to carbon basis | " + fmtInt(train.Q) + " m3/h"}</div>
+              <div style={{ fontWeight: 600 }}>Extraction (all points incl. tank vents) + old scrubber shell</div>
+              <div className="mut small">{fmt1(train.steps[0].T) + DEG + " | VOC " + fmtInt(train.steps[0].voc) + " mg/m3 to carbon basis | " + fmtInt(train.Q) + " m3/h | tanks " + fmt1(train.tankKgDay) + " kg/day" + (train.deliveries ? " (delivery day)" : "")}</div>
             </div>
           </div>
         </div>
@@ -930,8 +1005,8 @@ export default function TrialModeTab(props) {
           <div className="hd" style={{ cursor: "default" }}>
             <Icon type="fan" />
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600 }}>Main fan (Halifax) + existing demister</div>
-              <div className="mut small">{"Adds ~" + fmt1(site.fanHeat0 * Math.pow(train.Q / site.flow0, 2)) + DEG + " | " + fmtInt(train.Q) + " m3/h"}</div>
+              <div style={{ fontWeight: 600 }}>{train.fanAfter ? "Existing demister (fan moved after the carbon bed)" : "Main fan (Halifax) + existing demister"}</div>
+              <div className="mut small">{(train.fanAfter ? "No fan heat at the bed (was ~" + fmt1(site.fanHeat0) + DEG + ")" : "Adds ~" + fmt1(site.fanHeat0 * Math.pow(train.Q / site.flow0, 2)) + DEG) + " | " + fmtInt(train.Q) + " m3/h"}</div>
             </div>
           </div>
         </div>
@@ -1095,6 +1170,7 @@ export default function TrialModeTab(props) {
             <th>Carbon t/yr</th>
             <th>Carbon cost</th>
             <th>Energy cost</th>
+            <th>Other running</th>
             <th>Total / yr</th>
             <th>Saving / yr</th>
             <th>Capex</th>
@@ -1120,6 +1196,7 @@ export default function TrialModeTab(props) {
                 <td>{fmt1(r.sum.kg / 1000)}</td>
                 <td>{money(r.sum.carbonCost)}</td>
                 <td>{money(r.sum.energyCost)}</td>
+                <td>{money(r.sum.otherCost)}</td>
                 <td><b>{money(r.sum.total)}</b></td>
                 <td className={sv > 0 ? "good" : sv < 0 ? "bad" : ""}>{r.s.id === "baseline" ? "-" : money(sv)}</td>
                 <td>{money(r.sum.capex)}</td>
@@ -1133,7 +1210,7 @@ export default function TrialModeTab(props) {
           })}
         </tbody>
       </table>
-      <p className="mut small">Same assumptions, throughput and weather for every trial. Energy cost is the change vs today (negative = saving, e.g. fan power with a VSD).</p>
+      <p className="mut small">Same assumptions, throughput and weather for every trial. Energy cost is the change vs today (negative = saving, e.g. fan power with a VSD). Other running = device running costs such as a shift premium for scheduling.</p>
     </div>
   );
 
@@ -1187,6 +1264,21 @@ export default function TrialModeTab(props) {
           ))}
         </div>
         <div className="card">
+          <h3>Tank load today (from the inputs on the left)</h3>
+          <table>
+            <tbody>
+              <tr><td>Headspace temperature (mid-July / mid-January)</td><td>{fmt1(runTrain(site, scenarios[0], 196).tankT) + " / " + fmt1(runTrain(site, scenarios[0], 15).tankT) + " " + DEG}</td></tr>
+              <tr><td>Continuous vent sweep</td><td>{fmt1(tankB.sweepKgDay) + " kg/day"}</td></tr>
+              <tr><td>Deliveries (displacement + air blow)</td><td>{fmtInt(tankB.delKgYr) + " kg/yr"}</td></tr>
+              <tr><td>Total tank load to the carbon</td><td><b>{fmt1(tankB.totKgDay) + " kg/day"}</b></td></tr>
+              <tr><td>Share of carbon inlet load (all / PAH)</td><td><b>{Math.round(tankB.share * 100) + "% / " + Math.round(tankB.sharePAH * 100) + "%"}</b></td></tr>
+              <tr><td>Carbon inlet load (from inlet composition)</td><td>{fmt1(tankB.inletKgDay) + " kg/day"}</td></tr>
+            </tbody>
+          </table>
+          {tankB.overflow.length ? <div className="warn"><div className="b" style={{ background: "var(--bad)" }} /><div>{"Tank inputs exceed the assumed inlet for " + tankB.overflow.join(", ") + " - make the two consistent."}</div></div> : null}
+          <div className="mut small">A delivery displaces only ~{site.deliveryM3} m3 of headspace into ~{fmtInt(site.flow0 * site.hoursPerDay)} m3 of daily extraction, so deliveries matter far less than air drawn continuously through the vents.</div>
+        </div>
+        <div className="card">
           <h3>Climate - Boston monthly means</h3>
           <div className="row">
             <span className="small">Weather year</span>
@@ -1206,7 +1298,7 @@ export default function TrialModeTab(props) {
               </tr>
             </thead>
             <tbody>
-              {[["tMonth", "Ambient " + DEG], ["rhMonth", "RH %"]].map((r) => (
+              {[["tMonth", "Ambient " + DEG], ["rhMonth", "RH %"], ["diurnalAmp", "Day-night half-range " + DEG]].map((r) => (
                 <tr key={r[0]}>
                   <td className="small">{r[1]}</td>
                   {site[r[0]].map((v, i) => (
@@ -1289,6 +1381,7 @@ export default function TrialModeTab(props) {
         )}
         <button disabled={locked} onClick={() => removeScenario(active.id)}>Delete</button>
         <span className="sp" />
+        <button className="ghost small" onClick={() => setScenarios((l) => l.concat(extraPresets()))}>+ Add 23 Nov example trials</button>
         <button className="ghost small" onClick={resetAll}>Restore example trials</button>
       </div>
 
@@ -1343,6 +1436,16 @@ function MethodNotes(props) {
         <p>Creosote mist blinds the inlet face and carries heavy PAH. A high-efficiency coalescer protects the carbon.</p>
         <h4>Carbon grade <span className="tag">indicative</span></h4>
         <p>Coal-based grades suit the larger PAH molecules; coconut shell suits light VOC. High-activity and hydrophobic grades trade price for capacity or humidity tolerance. Factors are editable and should be confirmed with supplier isotherms and CoAs.</p>
+        <h4>Tank vents and tanker deliveries <span className="tag">physics - sweep flow not measured</span></h4>
+        <p>The storage tank vents and tanker displacement go to the extraction, so their vapour is already inside the measured carbon inlet. Trial Mode estimates it (headspace concentration from Raoult's law at tank temperature, times the air drawn continuously through the vents plus the volume displaced at each delivery) and subtracts it from the inlet to leave the process share. A vent damper with a pressure/vacuum valve cuts the continuous sweep; vapour balancing returns displaced vapour to the tanker. Deliveries are small against ~200,000 m3/day of extraction; the continuous sweep can matter, depending on flow and tank temperature.</p>
+        <h4>Schedule heavy steps for cooler hours <span className="tag">medium - estimate</span></h4>
+        <p>Moving a share of the day's emission load from the warm half of the day to the cool half lowers the load-weighted ambient by about 1.27 x share x the day-night half-range, which feeds the stack temperature through the site regression. Mass load is unchanged.</p>
+        <h4>Fan after the bed <span className="tag">high - physics</span></h4>
+        <p>The fan's heat of compression and any motor heat then reach the gas after the carbon, so the bed runs cooler by the fan temperature rise. Measure the rise across the fan to firm up the benefit.</p>
+        <h4>Interstage analyser (lead/lag) <span className="tag">medium</span></h4>
+        <p>Changes the lead when an analyser between the beds reads a set share of inlet, with the stack held to a measured backstop. With the site-calibrated breakthrough curve the lead is only part-loaded when the stack nears the ELV, so the backstop usually sets the change; the inlet test will show whether that holds.</p>
+        <h4>Partial changeout <span className="tag">medium</span></h4>
+        <p>Replaces only the inlet layer. The carbon left in keeps the loading the calibrated profile places beyond that layer (same treatment as a lead/lag rotation). Less carbon per event, more events; outlet bleed is not modelled.</p>
         <h4>Not modelled</h4>
         <p>Dilution air (rejected: concentration-based ELV); in-situ steam regeneration (heavy creosote ends do not strip cleanly); bed cooling jacket (rejected earlier); chiller trips and partial availability.</p>
         <h4>Sources</h4>

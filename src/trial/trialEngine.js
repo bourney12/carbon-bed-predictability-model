@@ -58,6 +58,22 @@ export const DEFAULT_SITE = {
   dailySD: 3.0, // deg C day-to-day ambient swing (AR1, fixed seed so runs are repeatable)
   tMonth: [4.2, 4.5, 6.6, 8.9, 12.1, 15.0, 17.4, 17.3, 14.8, 11.2, 7.2, 4.6],
   rhMonth: [87, 84, 80, 76, 74, 74, 74, 76, 79, 84, 88, 88],
+  // Half the day-night ambient range by month (deg C). Estimate for coastal Lincolnshire - confirm.
+  diurnalAmp: [2.5, 3.0, 3.5, 4.0, 4.5, 4.5, 4.5, 4.5, 4.0, 3.5, 2.5, 2.5],
+  // Creosote storage tanks. Vents and tanker displacement go to the extraction (confirmed 23 Nov 2026).
+  // Their load is already inside the measured carbon inlet; these inputs split it out so it can be cut.
+  tankHeated: 1, // 1 = tanks held warm, 0 = follow ambient
+  tankT: 45, // deg C held temperature (confirm)
+  tankSolar: 6, // deg C headspace above ambient from sun (unheated tanks, or when ambient + solar > held)
+  tankSweep: 150, // m3/h drawn continuously through the tank vents by the extraction (confirm - key unknown)
+  tankSat: 0.6, // headspace approach to equilibrium (1 = fully saturated)
+  tankXNaph: 0.12, // mole fractions in the stored creosote (Raoult)
+  tankXMnap: 0.08,
+  tankXHeavy: 0.2,
+  tankLight20: 100, // mg/m3 light VOC in an equilibrium headspace at 20 C (doubles per 10 C)
+  deliveriesYr: 143, // road tankers per year (~ throughput x 365 / 28 t)
+  deliveryM3: 26, // m3 creosote per delivery (= headspace vapour displaced)
+  airBlowM3: 40, // m3 air blown through at the end of offload (line clearing)
 };
 
 export const SPECIES = ["light", "naph", "mnap", "heavy"];
@@ -131,8 +147,36 @@ export const DEVICE_TYPES = {
     label: "Source reduction",
     short: "Source",
     positional: false,
-    blurb: "Anything that stops vapour reaching the extraction: vacuum-line condenser, cylinder door practice, tank vent return, lower working temperature.",
+    blurb: "Process vapour stopped before it reaches the extraction: vacuum-line condenser, cylinder door practice, lower working temperature. Acts on the process share only - use the tank devices for tank vents and deliveries.",
     defaults: { cutVOC: 0.1, cutPAH: 0.1, capex: 15000 },
+  },
+  vapbal: {
+    label: "Vapour balancing on tanker deliveries",
+    short: "VapBal",
+    positional: false,
+    blurb: "Return line from the storage tank headspace to the road tanker, so the vapour displaced while filling goes back to the tanker instead of the extraction. Optionally stop or divert the end-of-offload air blow.",
+    defaults: { capture: 0.95, blowCut: 0, capex: 12000, opex: 0 },
+  },
+  tankvent: {
+    label: "Tank vent damper + pressure/vacuum valve",
+    short: "TankVent",
+    positional: false,
+    blurb: "Stops the extraction pulling air continuously through the tank headspace. The vent stays connected but only opens on pressure (filling, breathing), so displacement still goes to abatement.",
+    defaults: { sweepCut: 0.9, capex: 8000, opex: 0 },
+  },
+  schedule: {
+    label: "Schedule heavy-emission steps for cooler hours",
+    short: "Schedule",
+    positional: false,
+    blurb: "Move vacuum releases, door openings and transfers out of the warm part of the day. Mass load is unchanged; the load-weighted stack temperature falls, which helps PAH most. Use the month buttons for summer only.",
+    defaults: { shift: 0.25, capex: 0, opex: 6000 },
+  },
+  fanmove: {
+    label: "Move the fan after the carbon bed",
+    short: "Fan after bed",
+    positional: false,
+    blurb: "Induced draught through the carbon: the fan's compression and motor heat is added after the bed instead of before it. Bed also runs under suction, so no outward leaks.",
+    defaults: { capex: 40000, opex: 0 },
   },
   custom: {
     label: "Custom device",
@@ -167,6 +211,99 @@ function csatSpecies(sp, T) {
   const TK = T + 273.15;
   const P = Math.exp(v.A - v.B / TK);
   return ((P * v.mw) / (8.314 * TK)) * 1000;
+}
+
+function csatLiquid(sp, T) {
+  // vapour pressure of the (sub-cooled) liquid, which is what Raoult's law needs for a solution.
+  // Naphthalene curve is for the solid: correct with its entropy of fusion (mp 80.3 C).
+  let cs = csatSpecies(sp, T);
+  if (sp === "naph") {
+    const TK = T + 273.15;
+    if (TK < 353.4) cs *= Math.exp(6.46 * (353.4 / TK - 1));
+  }
+  return cs;
+}
+
+// ---------------------------------------------------------------------------
+// Storage tank sub-model: continuous vent sweep + delivery displacement
+// ---------------------------------------------------------------------------
+
+export function tankHeadspace(site, tAmb) {
+  const solar = tAmb + site.tankSolar;
+  const T = site.tankHeated ? Math.max(site.tankT, solar) : solar;
+  const x = { naph: site.tankXNaph, mnap: site.tankXMnap, heavy: site.tankXHeavy };
+  const c = { light: site.tankLight20 * Math.pow(2, (T - 20) / 10) * site.tankSat };
+  for (let i = 0; i < PAH_SPECIES.length; i++) {
+    const sp = PAH_SPECIES[i];
+    c[sp] = site.tankSat * x[sp] * csatLiquid(sp, T);
+  }
+  return { T, c };
+}
+
+export function deliveriesOn(site, doy) {
+  const n = site.deliveriesYr || 0;
+  return Math.floor(((doy + 1) * n) / 365) - Math.floor((doy * n) / 365);
+}
+
+export function tankLoad(site, tAmb, doy, red) {
+  // mg/day of each species sent to the extraction by the tanks
+  const r = red || { sweep: 1, disp: 1, blow: 1 };
+  const hs = tankHeadspace(site, tAmb);
+  const sweepM3 = site.tankSweep * site.hoursPerDay * r.sweep;
+  const nDel = deliveriesOn(site, doy);
+  const dispM3 = nDel * (site.deliveryM3 * r.disp + site.airBlowM3 * r.blow);
+  const mass = {};
+  const sweepMass = {};
+  for (let i = 0; i < SPECIES.length; i++) {
+    const sp = SPECIES[i];
+    mass[sp] = hs.c[sp] * (sweepM3 + dispM3);
+    sweepMass[sp] = hs.c[sp] * sweepM3;
+  }
+  return { mass, sweepMass, nDel, hs };
+}
+
+const tankBaseCache = typeof WeakMap !== "undefined" ? new WeakMap() : null;
+export function tankBaseline(site) {
+  // Annual-mean tank contribution to the carbon inlet (mg/m3 at current flow) with today's
+  // arrangement. Subtracted from the measured inlet to leave the process share.
+  if (tankBaseCache && tankBaseCache.has(site)) return tankBaseCache.get(site);
+  const acc = { light: 0, naph: 0, mnap: 0, heavy: 0 };
+  const accSweep = { light: 0, naph: 0, mnap: 0, heavy: 0 };
+  for (let d = 0; d < 365; d++) {
+    const cl = climateDay(site, d);
+    const tl = tankLoad(site, cl.tAmb, d);
+    for (let i = 0; i < SPECIES.length; i++) {
+      acc[SPECIES[i]] += tl.mass[SPECIES[i]] / 365;
+      accSweep[SPECIES[i]] += tl.sweepMass[SPECIES[i]] / 365;
+    }
+  }
+  const vol = site.flow0 * site.hoursPerDay;
+  const conc = {};
+  const proc = {};
+  const kgDay = {};
+  for (let i = 0; i < SPECIES.length; i++) {
+    const sp = SPECIES[i];
+    conc[sp] = acc[sp] / vol;
+    proc[sp] = Math.max(0, site.inlet[sp] - conc[sp]);
+    kgDay[sp] = acc[sp] / 1e6;
+  }
+  const sweepKgDay = SPECIES.reduce((s, k) => s + accSweep[k], 0) / 1e6;
+  const totKgDay = SPECIES.reduce((s, k) => s + kgDay[k], 0);
+  const inletKgDay = (sum(site.inlet, SPECIES) * vol) / 1e6;
+  const res = {
+    conc,
+    proc,
+    kgDay,
+    totKgDay,
+    sweepKgDay,
+    delKgYr: (totKgDay - sweepKgDay) * 365,
+    inletKgDay,
+    share: totKgDay / Math.max(1e-9, inletKgDay),
+    sharePAH: (kgDay.naph + kgDay.mnap + kgDay.heavy) / Math.max(1e-9, (sum(site.inlet, PAH_SPECIES) * vol) / 1e6),
+    overflow: SPECIES.filter((sp) => conc[sp] > site.inlet[sp]),
+  };
+  if (tankBaseCache) tankBaseCache.set(site, res);
+  return res;
 }
 
 function sum(o, keys) {
@@ -342,12 +479,15 @@ export function runTrain(site, scenario, doy) {
   // Returns the gas state at the carbon inlet for one day plus diagnostics.
   const cl = climateDay(site, doy);
   const Q = flowOf(site, scenario, doy);
-  const tSrc = site.stackI + site.stackS * cl.tAmb; // baseline bed-inlet (stack) temperature
+  const tSrc0 = site.stackI + site.stackS * cl.tAmb; // baseline bed-inlet (stack) temperature
   const pvAmb = (cl.rhAmb / 100) * psatW(cl.tAmb) + site.moistureAdd;
   const month = monthOf(doy);
   const devs = (scenario.devices || []).filter((d) => d.on !== false && (!d.months || d.months[month] !== false));
   let massRet = 1;
+  let shift = 0;
+  let fanAfter = false;
   const cut = { light: 1, naph: 1, mnap: 1, heavy: 1 };
+  const red = { sweep: 1, disp: 1, blow: 1 };
   for (let i = 0; i < devs.length; i++) {
     const d = devs[i];
     if (d.type === "vsd") massRet *= d.massRetained;
@@ -355,13 +495,32 @@ export function runTrain(site, scenario, doy) {
       cut.light *= 1 - d.cutVOC;
       for (let j = 0; j < PAH_SPECIES.length; j++) cut[PAH_SPECIES[j]] *= 1 - d.cutPAH;
     }
+    if (d.type === "vapbal") {
+      red.disp *= 1 - d.capture;
+      red.blow *= 1 - d.blowCut;
+    }
+    if (d.type === "tankvent") red.sweep *= 1 - d.sweepCut;
+    if (d.type === "schedule") shift = Math.min(0.5, shift + d.shift);
+    if (d.type === "fanmove") fanAfter = true;
   }
+  // Moving a share s of the load from the warm half of the day to the cool half lowers the
+  // load-weighted ambient by 2 x s x (2/pi) x amplitude (sinusoidal day).
+  const amp = site.diurnalAmp ? site.diurnalAmp[month] : 0;
+  const tShift = -1.273 * shift * amp;
+  const tSrc = tSrc0 + site.stackS * tShift;
+  const tb = tankBaseline(site);
+  const tl = tankLoad(site, cl.tAmb, doy, red);
+  const tlBase = tankLoad(site, cl.tAmb, doy);
+  const vol = Q * site.hoursPerDay;
   const c = {};
   for (let i = 0; i < SPECIES.length; i++) {
     const sp = SPECIES[i];
-    c[sp] = site.inlet[sp] * (site.flow0 / Q) * massRet * cut[sp];
+    c[sp] = tb.proc[sp] * (site.flow0 / Q) * massRet * cut[sp] + tl.mass[sp] / vol;
   }
-  const fanHeat = site.fanHeat0 * Math.pow(Q / site.flow0, 2);
+  const tankC = sum(tl.mass, SPECIES) / vol;
+  const tankKgDay = sum(tl.mass, SPECIES) / 1e6;
+  const tankKgDayBase = sum(tlBase.mass, SPECIES) / 1e6;
+  const fanHeat = fanAfter ? 0 : site.fanHeat0 * Math.pow(Q / site.flow0, 2);
   let st = { T: tSrc - site.fanHeat0, pv: pvAmb, c, Q };
   const ctx = { site, tAmb: cl.tAmb };
   let kw = 0;
@@ -378,18 +537,26 @@ export function runTrain(site, scenario, doy) {
   };
   doList(pre);
   st = Object.assign({}, st, { T: st.T + fanHeat });
-  steps.push({ label: "Fan", T: st.T, pv: st.pv, voc: sum(st.c, SPECIES), pah: sum(st.c, PAH_SPECIES) });
+  steps.push({ label: fanAfter ? "Fan moved after bed" : "Fan", T: st.T, pv: st.pv, voc: sum(st.c, SPECIES), pah: sum(st.c, PAH_SPECIES) });
   doList(post);
   // fan power change (cube law) relative to current
   const fanDelta = site.fanPower0 * (Math.pow(Q / site.flow0, 3) - 1);
   let rhBed = (100 * st.pv) / psatW(st.T);
   const wetBed = rhBed > 100;
   if (rhBed > 100) rhBed = 100;
-  const rhBase = Math.min(100, (100 * pvAmb) / psatW(tSrc));
+  const rhBase = Math.min(100, (100 * pvAmb) / psatW(tSrc0));
   return {
     tAmb: cl.tAmb,
     rhAmb: cl.rhAmb,
     tSrc,
+    tSrc0,
+    tShift,
+    fanAfter,
+    tankC,
+    tankKgDay,
+    tankKgDayBase,
+    deliveries: tl.nDel,
+    tankT: tl.hs.T,
     tBed: st.T,
     rhBed,
     rhBase,
@@ -471,6 +638,7 @@ export function simulate(site, scenario, opts) {
     const teP = rate * (tr.pah * tr.Q) / (tr.pah0 * site.flow0);
     let outV = 0;
     let outP = 0;
+    let leadOut = 0;
     const fr = [];
     if (series) {
       // Series beds behave as one deep bed (gas passes every vessel). Train loading is
@@ -506,6 +674,10 @@ export function simulate(site, scenario, opts) {
       }
       trainState.kLeadV = kLeadV[0];
       trainState.kLeadP = kLeadP[0];
+      trainState.kV = kV;
+      trainState.kP = kP;
+      // what an interstage analyser between lead and lag would read (fraction of inlet)
+      leadOut = Math.max(logLogistic(trainState.mV / kLeadV[0], site.voc.a), logLogistic(trainState.mP / kLeadP[0], site.pah.a));
       outV = tr.voc * fV;
       outP = tr.pah * fP;
     } else {
@@ -519,6 +691,8 @@ export function simulate(site, scenario, opts) {
         // this bed's capacity (scaled by its own mass) against its share of the load
         const kV = m50(site, "voc", tr, tr.voc, tr.voc0, b.spec, geo);
         const kP = m50(site, "pah", tr, tr.pah, tr.pah0, b.spec, geo);
+        b.kV = kV;
+        b.kP = kP;
         const fV = logLogistic(b.mV / kV, site.voc.a);
         const fP = logLogistic(b.mP / kP, site.pah.a);
         fr.push(Math.max(fV, fP));
@@ -541,7 +715,15 @@ export function simulate(site, scenario, opts) {
       avV += win[i][0] / win.length;
       avP += win[i][1] / win.length;
     }
-    const fired = avV * mV >= trig || avP * mP >= trig;
+    // Trigger. Default: predicted stack (rolling mean) reaches the trigger fraction of ELV.
+    // Interstage (lead/lag only): change when the analyser after the lead reads leadFrac of
+    // inlet, with the stack held to a measured backstop instead of the planning margin.
+    const inter = arr === "leadlag" && beds.length > 1 && scenario.trigMode === "interstage";
+    const stackTrig = inter ? (scenario.backstop || 0.95) : trig;
+    const stackHit = avV * mV >= stackTrig || avP * mP >= stackTrig;
+    const leadHit = inter && leadOut >= (scenario.leadFrac || 0.5);
+    const fired = stackHit || leadHit;
+    const firedBy = leadHit && !stackHit ? "Interstage" : avV * mV >= stackTrig ? "VOC" : "PAH";
     daily.push({
       day,
       doy,
@@ -557,23 +739,42 @@ export function simulate(site, scenario, opts) {
       vHi: vRatio * site.voc.band,
       pHi: pRatio * site.pah.band,
       fr: fr.slice(),
+      leadOut,
+      tankKg: tr.tankKgDay,
       kw: tr.kwDevices + tr.kwFan,
       change: false,
     });
     if (fired) {
       if (o.noChange) {
-        if (firstTrigger === null) firstTrigger = { day, by: avV * mV >= trig ? "VOC" : "PAH" };
+        if (firstTrigger === null) firstTrigger = { day, by: firedBy };
         break;
       }
       if (day - lastChange >= 7) {
         let kgChanged = 0;
         let costMult = 0;
+        // Partial changeout: replace only the inlet share p of the carbon. The carbon left in
+        // keeps the loading that the calibrated profile places beyond the inlet share
+        // (same treatment as a lead/lag rotation). Not used with lead/lag.
+        const p = arr === "leadlag" ? 1 : Math.max(0.1, Math.min(1, scenario.partialFrac || 1));
+        const keepFrac = (m, k, a) => (p >= 1 ? 0 : logLogistic(m / (p * k), a));
         if (arr === "stagger") {
           let idx = 0;
           for (let i = 1; i < beds.length; i++) if (fr[i] > fr[idx]) idx = i;
-          kgChanged = beds[idx].spec.mass;
-          costMult = (CARBON_TYPES[beds[idx].spec.type] || CARBON_TYPES.cx65).costMult * kgChanged;
-          beds[idx] = { spec: beds[idx].spec, mV: 0, mP: 0, age: 0 };
+          const b = beds[idx];
+          kgChanged = b.spec.mass * p;
+          costMult = (CARBON_TYPES[b.spec.type] || CARBON_TYPES.cx65).costMult * kgChanged;
+          beds[idx] = { spec: b.spec, mV: b.mV * keepFrac(b.mV, b.kV, site.voc.a), mP: b.mP * keepFrac(b.mP, b.kP, site.pah.a), age: 0 };
+        } else if (p < 1) {
+          for (let i = 0; i < beds.length; i++) {
+            kgChanged += beds[i].spec.mass * p;
+            costMult += (CARBON_TYPES[beds[i].spec.type] || CARBON_TYPES.cx65).costMult * beds[i].spec.mass * p;
+          }
+          if (series) {
+            trainState.mV = trainState.mV * keepFrac(trainState.mV, trainState.kV, site.voc.a);
+            trainState.mP = trainState.mP * keepFrac(trainState.mP, trainState.kP, site.pah.a);
+          } else {
+            beds = beds.map((b) => ({ spec: b.spec, mV: b.mV * keepFrac(b.mV, b.kV, site.voc.a), mP: b.mP * keepFrac(b.mP, b.kP, site.pah.a), age: 0 }));
+          }
         } else if (arr === "leadlag" && beds.length > 1) {
           const lead = beds[0];
           kgChanged = lead.spec.mass;
@@ -595,7 +796,7 @@ export function simulate(site, scenario, opts) {
           trainState.mP = 0;
         }
         const cost = site.changeoutFixed + costMult * site.carbonPerKg;
-        events.push({ day, doy, kg: kgChanged, cost, by: avV * mV >= trig ? "VOC" : "PAH", interval: day - (lastChange < 0 ? 0 : lastChange) });
+        events.push({ day, doy, kg: kgChanged, cost, by: firedBy, interval: day - (lastChange < 0 ? 0 : lastChange) });
         daily[daily.length - 1].change = true;
         win = [];
         lastChange = day;
@@ -628,7 +829,12 @@ export function summarise(site, scenario, sim) {
   const ssIntervals = ev.map((e) => e.interval);
   const avgInt = ssIntervals.length ? ssIntervals.reduce((s, x) => s + x, 0) / ssIntervals.length : null;
   const byPAH = ev.filter((e) => e.by === "PAH").length;
-  const capex = (scenario.devices || []).filter((d) => d.on !== false).reduce((s, d) => s + (d.capex || 0), 0) + (scenario.vesselCapex || 0);
+  const byInter = ev.filter((e) => e.by === "Interstage").length;
+  const onDevs = (scenario.devices || []).filter((d) => d.on !== false);
+  const capex = onDevs.reduce((s, d) => s + (d.capex || 0), 0) + (scenario.vesselCapex || 0) + (scenario.trigMode === "interstage" && scenario.arrangement === "leadlag" ? scenario.interCapex || 0 : 0);
+  // other running costs (e.g. shift premium for night scheduling), pro rata to months in service
+  const otherCost = onDevs.reduce((s, d) => s + ((d.opex || 0) * (d.months ? d.months.filter((x) => x !== false).length : 12)) / 12, 0);
+  const tankKgYr = yr.reduce((s, d) => s + (d.tankKg || 0), 0);
   const minTbed = yr.reduce((m, d) => Math.min(m, d.tBed), 99);
   return {
     changeouts: ev.length,
@@ -636,7 +842,10 @@ export function summarise(site, scenario, sim) {
     carbonCost,
     kwh,
     energyCost,
-    total: carbonCost + energyCost,
+    otherCost,
+    tankKgYr,
+    byInter,
+    total: carbonCost + energyCost + otherCost,
     over,
     wet,
     highRH,
@@ -705,6 +914,17 @@ export function warningsFor(site, scenario, summ, life) {
   if (summ.byPAH > 0) w.push({ lvl: "info", t: summ.byPAH + " of the year's changeouts are triggered by PAH (temperature), not VOC capacity." });
   if (devs.some((d) => d.type === "vsd")) w.push({ lvl: "info", t: "VSD energy saving assumes the fan absorbs " + site.fanPower0 + " kW today (cube law). Confirm from the motor current before using the payback." });
   if (devs.some((d) => d.type === "vsd" && d.flow < site.flow0 * 0.55)) w.push({ lvl: "amber", t: "Flow below ~55% of current: check capture velocity at every extraction point before relying on this." });
+  const tb = tankBaseline(site);
+  if (tb.overflow.length) w.push({ lvl: "red", t: "Tank inputs give more " + tb.overflow.join(", ") + " than the assumed carbon inlet holds. Lower the tank sweep / headspace inputs or raise the inlet composition - the two must be consistent." });
+  if (devs.some((d) => d.type === "vapbal" || d.type === "tankvent")) w.push({ lvl: "info", t: "Tanks send ~" + tb.totKgDay.toFixed(1) + " kg/day to the carbon today (" + Math.round(tb.share * 100) + "% of the inlet load; vent sweep " + tb.sweepKgDay.toFixed(1) + " kg/day, deliveries " + Math.round(tb.delKgYr) + " kg/yr). The vent sweep flow (" + site.tankSweep + " m3/h) is assumed - measure the velocity in the tank vent branch to firm this up." });
+  if (devs.some((d) => d.type === "tankvent")) w.push({ lvl: "amber", t: "A tank vent damper changes how the tanks are protected against over/under-pressure and how fugitive vapour is captured. Size the P/V valve to the fill rate and thermal breathing, and check it against the COMAH Safety Report and permit before installing." });
+  if ((scenario.partialFrac || 1) < 1 && scenario.arrangement !== "leadlag") w.push({ lvl: "amber", t: "Partial changeout leaves part-loaded carbon at the outlet side. The model counts its loading against the whole bed but not where it sits; in practice the outlet carbon can bleed slowly. Confirm with an outlet test in the week after the first partial change." });
+  if (scenario.trigMode === "interstage" && scenario.arrangement === "leadlag") {
+    if (summ.byInter === 0 && summ.changeouts > 0) w.push({ lvl: "info", t: "Every changeout is still set by the stack backstop, not the interstage reading: with the site-calibrated breakthrough curve the lead is only part-loaded when the stack nears the ELV. The gain here comes from running the stack to the measured " + Math.round((scenario.backstop || 0.95) * 100) + "% backstop instead of the 80% planning trigger." });
+    w.push({ lvl: "amber", t: "Interstage trigger relies on a working analyser (PID/FID) between the beds and a stack backstop you can see. Without continuous stack data, keep the planning trigger." });
+  }
+  if (devs.some((d) => d.type === "fanmove")) w.push({ lvl: "info", t: "Fan after bed removes " + site.fanHeat0 + " C of fan heat at the bed (Operation assumptions). Check the bed vessel and demister for suction duty, and that the fan is happy on clean, cooler gas." });
+  if (devs.some((d) => d.type === "schedule")) w.push({ lvl: "info", t: "Scheduling benefit uses estimated day-night temperature ranges (Climate table) and assumes the moved steps carry the stated share of the day's emission load. A week of continuous stack temperature would firm this up." });
   return w;
 }
 
@@ -728,6 +948,16 @@ export function presetScenarios() {
     { id: newId(), name: "DCWBC + lead/lag", arrangement: "leadlag", beds: [bed(), bed()], devices: [dev("dcwbc"), dev("reheat", { dT: 3 })], vesselCapex: 0 },
     { id: newId(), name: "Lead/lag + condenser 6 C", arrangement: "leadlag", beds: [bed(), bed()], devices: [dev("condenser"), dev("reheat", { dT: 3 })], vesselCapex: 0 },
     { id: newId(), name: "Condenser 6 C + reheat + VSD", arrangement: "single", beds: [bed()], devices: [dev("vsd"), dev("condenser"), dev("reheat", { dT: 5 })], vesselCapex: 0 },
+  ].concat(extraPresets());
+}
+
+// Added 23 Nov 2026: tank vents/deliveries, scheduling, fan position, interstage, partial changeout
+export function extraPresets() {
+  return [
+    { id: newId(), name: "Tank vent damper + vapour balancing", arrangement: "single", beds: [bed()], devices: [dev("tankvent"), dev("vapbal")], vesselCapex: 0 },
+    { id: newId(), name: "Single bed - change top half", arrangement: "single", partialFrac: 0.5, beds: [bed()], devices: [], vesselCapex: 0 },
+    { id: newId(), name: "Fan after bed + summer scheduling", arrangement: "single", beds: [bed()], devices: [dev("fanmove"), dev("schedule", { months: MONTHS.map((x, i) => i >= 4 && i <= 8) })], vesselCapex: 0 },
+    { id: newId(), name: "Lead/lag + tank damper + fan after bed + summer scheduling", arrangement: "leadlag", beds: [bed(), bed()], devices: [dev("tankvent"), dev("fanmove"), dev("schedule", { months: MONTHS.map((x, i) => i >= 4 && i <= 8) })], vesselCapex: 0 },
   ];
 }
 
