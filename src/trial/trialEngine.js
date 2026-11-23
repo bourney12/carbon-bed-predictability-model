@@ -49,7 +49,9 @@ export const DEFAULT_SITE = {
   testCost: 2755,
   elecPrice: 0.25, // GBP per kWh
   hoursPerDay: 21.7,
-  fanPower0: 22, // kW absorbed at current flow (confirm)
+  // kW electrical at current flow (confirm from motor current). v2.8.1 audit: was 22 kW, more than the
+  // 18.5 kW IE3 motor can draw continuously (~20 kW electrical at full load), which overstated VSD savings.
+  fanPower0: 20,
   fanEff: 0.65,
   trigger: 0.8, // change carbon at this fraction of ELV
   triggerWindow: 7, // days averaged for the changeout decision (planning basis, not single hot days)
