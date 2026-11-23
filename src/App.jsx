@@ -94,8 +94,8 @@ function useTheme() {
 }
 const MONO = "'JetBrains Mono', Consolas, 'Courier New', monospace";
 const HEAD_FONT = "'Space Grotesk', Inter, system-ui, sans-serif";
-const MODEL_VERSION = "v2.1.0";
-const MODEL_BUILD_DATE = "2026-11-20";
+const MODEL_VERSION = "v2.8.1";
+const MODEL_BUILD_DATE = "2026-11-23";
 
 // ============================================================
 // CONSTANTS
@@ -111,7 +111,7 @@ const DEFAULT_CROSS_SECTION_M2 = 1.5;
 const NAPHTHALENE_MW = 128.17;
 const SAME_BED_VOC_LIMIT_HRS = 1155;
 const LAT        = 52.9833;
-const LON        = 0.0167;
+const LON        = -0.0167;   // Boston, Lincolnshire is west of Greenwich (v2.8.1 sign fix)
 const P1_AVG_HRS = 5.85;    // hrs/charge  Plant 1 (blended average, all product types)
 const P2_AVG_HRS = 7.84;    // hrs/charge  Plant 2 (blended average, all product types)
 // Updated 2026-06-18: Testo 925 spot reading validated +10.3 deg C delta.
@@ -388,19 +388,20 @@ function drPolanyi(tempC, inletConc_mgm3, carbonBatch) {
     ? 0.45 * (carbonBatch.iodineMgG / 1000)
     : 0.45;
   var E = 20000;
-  // Antoine equation for naphthalene saturation vapour pressure (Pa)
-  // Valid range ~80-218 degC; extrapolated at ambient - conservative below boiling point
-  // log10(Ps_mmHg) = 8.722 - 3104 / (T_degC + 217.7)  [CRC Handbook]
-  var Ps_mmHg = Math.pow(10, 8.722 - 3104 / (tempC + 217.7));
-  var Ps_Pa = Ps_mmHg * 133.322;
-  // Partial pressure from inlet concentration: P = (C * R * T) / (MW * 1000)
-  // C in mg/m3, MW naphthalene 128.17 g/mol
+  // v2.8.1 audit: naphthalene saturation vapour pressure (Pa), ln(P/Pa) = A - B/T(K).
+  // Solid below the 80.3 C melting point (Ruzicka 2005: 10.9 Pa at 25 C), liquid above
+  // (anchored at 25 C sub-cooled and the 218 C boiling point). Same curves as Trial Mode.
+  // The previous Antoine form gave ~0.01 Pa at 25 C (about 1,000x low), so A ~ 0 and the
+  // capacity always came out at W0 regardless of temperature or concentration.
+  var Ps_Pa = tempC < 80.3 ? Math.exp(31.676 - 8732 / T_K) : Math.exp(23.798 - 6027 / T_K);
+  // Partial pressure from inlet concentration: P = C R T / MW, C in kg/m3, MW 0.12817 kg/mol
   var C_kgm3 = Math.max(inletConc_mgm3 || 0.1, 0.001) / 1000000;
   var P_Pa = Math.max((C_kgm3 * R * T_K) / (0.12817), 0.001);
   var Ps_safe = Math.max(Ps_Pa, P_Pa + 0.001);
   var A = R * T_K * Math.log(Ps_safe / P_Pa);
   var ratio = A / E;
-  var W = W0 * Math.exp(-(ratio * ratio));
+  // W is a micropore volume (cm3/g); x 0.98 g/cm3 adsorbate density gives kg/kg.
+  var W = W0 * Math.exp(-(ratio * ratio)) * 0.98;
   return Math.max(0, W);
 }
 
@@ -414,10 +415,12 @@ function wheelerJonasBedLife(opTemp, inletConc_mgm3, settings, carbonBatch) {
   const flowM3s = flowM3hr / 3600;
   const inletKgM3 = Math.max(inletConc_mgm3 || 0.1, 0.1) / 1000000;
   const capacityKgKg = Math.max(0.0001, drPolanyi(opTemp, inletConc_mgm3, carbonBatch));
-  const linearVelocity = flowM3s / crossSectionM2;
   const serviceSeconds = (bedMassKg * capacityKgKg) / Math.max(flowM3s * inletKgM3, 1e-12);
-  const mtzSeconds = (bulkDensity * bedDepthM) / Math.max(linearVelocity * NAPHTHALENE_MW, 1e-9);
-  return Math.max(0, Math.round((serviceSeconds - mtzSeconds) / 3600));
+  // v2.8.1 audit: the previous MTZ term (density x depth / (velocity x MW)) was not
+  // dimensionally valid. Use bed utilisation 1 - MTZ/(2 x depth) with a 0.3 m MTZ,
+  // the same assumption as Trial Mode.
+  const utilisation = Math.max(0.25, 1 - 0.3 / (2 * Math.max(bedDepthM, 0.1)));
+  return Math.max(0, Math.round(serviceSeconds * utilisation / 3600));
 }
 
 function ambientThresholdForPAHAtHours(activeHrs, pahC) {
@@ -822,7 +825,11 @@ const BOSTON_MONTHLY_RH = [
 ];
 
 function isoDateFromDate(date) {
-  return date.toISOString().slice(0, 10);
+  // v2.8.1 audit: local calendar date. toISOString() is UTC, so in a UK browser during BST
+  // every forecast date built from a date string came out one day early.
+  const d = new Date(date);
+  const z = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate());
 }
 
 function addDays(date, days) {
@@ -1760,7 +1767,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
   // Fan hours: bed exposure time even between charges (24/7 minus downtime)
   const fanActiveHrs = Math.max(0, daysSince * 24 - downtimeHrs);
   // Prediction uses charge hours (loading proxy) but fan hours shown for reference
-  const currentPeriodEnd = new Date().toISOString().slice(0, 10);
+  const currentPeriodEnd = isoDateFromDate(new Date());
   const effectiveChargeHrs = calcEffectiveHours(chargeActiveHrs, lastChangeout, currentPeriodEnd);
   const activeHrs = effectiveChargeHrs;
 
@@ -1784,7 +1791,10 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
   const vocRiskWeight = settings.vocRiskWeight != null ? settings.vocRiskWeight : 0.55;
   const pahRiskWeight = 1 - vocRiskWeight;
   const combined = Math.round(vRisk*vocRiskWeight + pRisk*pahRiskWeight);
-  const wjBedLife = wheelerJonasBedLife(opTemp, predVOCBand.mid, settings, latestCarbonBatch);
+  // v2.8.1 audit: Wheeler-Jonas needs the carbon INLET concentration. It was being given the
+  // predicted stack (outlet) VOC, which made the reference life far too long.
+  const wjInlet = settings.inletVOCmgm3 != null ? settings.inletVOCmgm3 : 400;
+  const wjBedLife = wheelerJonasBedLife(opTemp, wjInlet, settings, latestCarbonBatch);
   const missingPah = getMostRecentPeriodWithMissingPAH(stackData);
 
   const vocWindow   = safeWindowHoursVOC(ambientTemp, rh, vocC, nf);
@@ -1989,12 +1999,12 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
           lineHeight:1.6
         }}>
           <strong style={{ color:C.ink }}>Compliance scheduling uses the VOC Safe Window figure only.</strong>
-          {" "}The Wheeler-Jonas theoretical maximum is a steady-state upper bound derived from adsorption theory (Dubinin-Radushkevich/Polanyi). It has no calibrated relationship to any observed breakthrough event in the P1-P14 dataset and consistently exceeds the regression-derived safe window by a large margin. It is shown for engineering reference only and must not be used as the basis for carbon changeout scheduling or stack test deferral decisions.
+          {" "}The Wheeler-Jonas theoretical maximum is a steady-state upper bound derived from adsorption theory (Dubinin-Radushkevich/Polanyi). It has no calibrated relationship to any observed breakthrough event in the P1-P14 dataset. It is shown for engineering reference only and must not be used as the basis for carbon changeout scheduling or stack test deferral decisions.
         </div>
         </Fold>
         <Fold title="Wheeler-Jonas theoretical maximum (reference only)">
         <div style={{ marginTop:10, padding:"10px 14px", background:C.surface2, border:`1px solid ${C.border}`, borderRadius:7, fontSize:12, color:C.muted, lineHeight:1.6 }}>
-          Wheeler-Jonas theoretical maximum (engineering reference only): {wjBedLife.toLocaleString()} hrs - not a compliance limit. This figure has no calibrated relationship to any P1-P14 breakthrough observation and consistently exceeds the regression-derived safe window. It must not be used as the basis for carbon changeout scheduling or stack test deferral.
+          Wheeler-Jonas theoretical estimate (engineering reference only): {wjBedLife.toLocaleString()} hrs at an assumed carbon-inlet VOC of {wjInlet} mg/m3 - not a compliance limit. The carbon-inlet concentration has not been measured; the figure scales inversely with it, so compare it with the regression safe window as a check on the inlet assumption, not on the bed. It must not be used as the basis for carbon changeout scheduling or stack test deferral.
           {latestCarbonBatch ? ` Current carbon batch ref: ${latestCarbonBatch.batchRef || latestCarbonBatch.date || "latest batch"} | iodine ${latestCarbonBatch.iodineMgG != null ? latestCarbonBatch.iodineMgG : "--"} mg/g | density ${latestCarbonBatch.densityKgM3 != null ? latestCarbonBatch.densityKgM3 : "--"} kg/m3.` : " No live carbon batch record available; default carbon properties applied."}
         </div>
         </Fold>
@@ -2008,7 +2018,7 @@ function DashboardTab({ stackData, settings, weather, ambientOverride, chargeLog
           <RiskGauge score={combined} label="Combined" sub={`${Math.round(vocRiskWeight*100)}% VOC + ${Math.round(pahRiskWeight*100)}% PAH weighting`} />
         </div>
         <div style={{ fontSize:12, color:C.muted, textAlign:"center", marginTop:8 }}>
-          {opNote} | Humidity factor: {hf.toFixed(3)} (RH {rh.toFixed(0)}%) | WJ nf: {(nf*100).toFixed(0)}% | DR/Polanyi ref capacity (theoretical): {(drPolanyi(opTemp,predVOCBand.mid,latestCarbonBatch)*1000).toFixed(1)} g/kg <span style={{ color:C.muted, fontSize:12 }}>[Not integrated into VOC regression pathway - engineering reference only]</span>
+          {opNote} | Humidity factor: {hf.toFixed(3)} (RH {rh.toFixed(0)}%) | WJ nf: {(nf*100).toFixed(0)}% | DR/Polanyi ref capacity (theoretical): {(drPolanyi(opTemp,wjInlet,latestCarbonBatch)*1000).toFixed(1)} g/kg <span style={{ color:C.muted, fontSize:12 }}>[Not integrated into VOC regression pathway - engineering reference only]</span>
         </div>
         <div style={{ textAlign:"center", marginTop:8 }}>
           <button onClick={()=>setShowWeighting(v=>!v)} style={{ border:`1px solid ${C.border}`, background:C.surface2, color:C.blue, borderRadius:20, width:24, height:24, cursor:"pointer", fontWeight:800 }}>?</button>
@@ -2241,7 +2251,7 @@ function ChargeCyclesTab({ chargeLog, onAddCharge, onAddCharges, onDeleteCharge,
   const plant1Hrs   = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant1").reduce((a,c)=>a+(c.durationHrs||P1_AVG_HRS)*(c.count||1),0);
   const plant2Hrs   = currentPeriodChargeLog.filter(c=>normalizeChargeType(c.type)==="plant2").reduce((a,c)=>a+(c.durationHrs||P2_AVG_HRS)*(c.count||1),0);
   const totalActiveHrs = Math.round((plant1Hrs+plant2Hrs)*10)/10;
-  const effectiveActiveHrs = calcEffectiveHours(totalActiveHrs, lastChangeout, new Date().toISOString().slice(0, 10));
+  const effectiveActiveHrs = calcEffectiveHours(totalActiveHrs, lastChangeout, isoDateFromDate(new Date()));
   const stackTempCorrection = settings.stackTempCorrectionC ?? 10.3;
   const vocWindow = safeWindowHoursVOC(settings.typicalTempC, settings.typicalRH, vocC, settings.naphthaleneFrac);
   const remainHrs = Math.max(0, vocWindow - effectiveActiveHrs);
@@ -4369,7 +4379,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
 // ============================================================
 // FORWARD FORECAST TAB
 // ============================================================
-function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeout, onChangeoutDateChange, vocC, pahC, thermalStats, canEdit }) {
+function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeout, onChangeoutDateChange, vocC, pahC, thermalStats, canEdit, currentActiveHrs }) {
   const today = useMemo(()=>new Date(),[]);
   const [mode, setMode] = useState("seasonal");
   const [flatTemp, setFlatTemp] = useState(settings.typicalTempC);
@@ -4388,7 +4398,10 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
   const preTestBufferActiveHrs = settings.preTestBufferActiveHrs ?? 150;
   const autoActiveHrs = Math.max(0, Math.round(daysBetween(lastChangeout, today) * 24 * (utilisationPct / 100)));
   const autoEffectiveActiveHrs = calcEffectiveHours(autoActiveHrs, lastChangeout, isoDateFromDate(today));
-  const startActiveHrs = activeOverride !== "" ? Math.max(0, parseFloat(activeOverride) || 0) : autoEffectiveActiveHrs;
+  // v2.8.1 audit: start from the same bed loading as Home and Dashboard (charge log when synced),
+  // so the forecast tab gives the same date as every other screen.
+  const baseActiveHrs = Number.isFinite(currentActiveHrs) ? currentActiveHrs : autoEffectiveActiveHrs;
+  const startActiveHrs = activeOverride !== "" ? Math.max(0, parseFloat(activeOverride) || 0) : baseActiveHrs;
 
   useEffect(()=>{
     if (mode !== "live" || liveTemps) return;
@@ -4599,7 +4612,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
         })()}
         <div style={{ fontSize:12, color:C.muted }}>Leave cumulative active hours as the auto value or type an override. Current VOC anchor scaling has been removed; the model prediction at start is shown for audit trail only.</div>
         <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>
-          Auto baseline uses {autoEffectiveActiveHrs.toFixed(0)} effective hrs from {autoActiveHrs.toFixed(0)} raw hrs after fan-flow weighting since changeout.
+          Auto baseline uses {baseActiveHrs.toFixed(0)} effective hrs, the same bed loading as Home and Dashboard (charge log where synced). Days x utilisation alone would give {autoEffectiveActiveHrs.toFixed(0)} hrs.
         </div>
       </Card>
 
@@ -5168,7 +5181,7 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
         <div style={{ fontSize:12, color:C.muted, marginTop:4, lineHeight:1.5 }}>
           When enabled, humidity is fixed at 90% RH for all VOC predictions and forward forecasts. This is the conservative BAT-aligned posture for Boston, Lincolnshire where night-time RH routinely exceeds 90% in autumn and winter. Recommended for compliance scheduling decisions.
         </div>
-        <div style={{ fontSize:12, color:C.muted }}>Boston, Lincolnshire PE21 7HJ | {LAT}N {LON}E | Live weather from Open-Meteo on load.</div>
+        <div style={{ fontSize:12, color:C.muted }}>Boston, Lincolnshire PE21 7HJ | {LAT}N {Math.abs(LON)}W | Live weather from Open-Meteo on load.</div>
       </Card>
       <Card>
         <SectionTitle>Data Management</SectionTitle>
@@ -5212,6 +5225,7 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
           <Input label="Bed Mass (kg)" type="number" value={settings.bedMass} onChange={v=>onChange("bedMass",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
           <Input label="Extraction Flow (m3/hr)" type="number" value={settings.flowM3hr} onChange={v=>onChange("flowM3hr",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
           <Input label="Bed Cross-Section (m2)" type="number" step="0.1" min={0.2} value={settings.crossSectionM2} onChange={v=>onChange("crossSectionM2",Math.max(0.2,v||DEFAULT_CROSS_SECTION_M2))} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
+          <Input label="Carbon-inlet VOC (mg/m3, assumed)" type="number" step="10" min={10} value={settings.inletVOCmgm3 != null ? settings.inletVOCmgm3 : 400} onChange={v=>onChange("inletVOCmgm3",Math.max(10,v||400))} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
           <Input label="WJ Naph/TVOC Fraction (%)" type="number" step="0.5" value={(settings.naphthaleneFrac*100).toFixed(1)} onChange={v=>onChange("naphthaleneFrac",v/100)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
           <Input label="Utilisation Rate (0-1)" type="number" step="0.01" min={0} max={1} value={settings.utilisationRate} onChange={v=>onChange("utilisationRate",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
           <Input label="Stack Temp Correction Factor (C)" type="number" step="0.5" min={0} max={20} value={settings.stackTempCorrectionC} onChange={v=>onChange("stackTempCorrectionC",Math.max(0,Math.min(20,v||0)))} style={{ flex:"1 1 210px" }} disabled={!canEdit} />
@@ -6314,7 +6328,7 @@ export default function App() {
   const appDaysSince = Math.max(0, Math.floor((new Date()-new Date(lastChangeout))/86400000));
   const appFallbackHrs = Math.max(0, Math.round(appDaysSince*24*settings.utilisationRate - downtimeHrs));
   const chargeActiveHrs = currentPeriodChargeLog.length > 0 ? Math.max(appLogChargeHrs - downtimeHrs, 0) : appFallbackHrs;
-  const effectiveChargeActiveHrs = calcEffectiveHours(chargeActiveHrs, lastChangeout, new Date().toISOString().slice(0, 10));
+  const effectiveChargeActiveHrs = calcEffectiveHours(chargeActiveHrs, lastChangeout, isoDateFromDate(new Date()));
   const latestScadaReading = useMemo(()=>{
     const rows = (platformState.cgb_creoDailyLog || []).filter(r => r && r.ambientC != null).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
     const last = rows.length ? rows[rows.length - 1] : null;
@@ -6462,7 +6476,7 @@ export default function App() {
         {activeTab==="dashboard"    && <DashboardTab    stackData={stackData} settings={settings} weather={weather} ambientOverride={appAmbientTemp} chargeLog={chargeLog} lastChangeout={lastChangeout} downtimeHrs={downtimeHrs} onDowntime={setDowntimeHrs} vocC={vocC} pahC={pahC} canEdit={canEdit} latestCarbonBatch={latestCarbonBatch} />}
         {activeTab==="cycles"       && <ChargeCyclesTab chargeLog={chargeLog} onAddCharge={c=>setChargeLog(l=>[...l,c])} onAddCharges={list=>setChargeLog(l=>[...l,...list])} onDeleteCharge={id=>setChargeLog(l=>l.filter(c=>c.id!==id))} lastChangeout={lastChangeout} settings={settings} vocC={vocC} canEdit={canEdit} />}
         {activeTab==="stack"        && <StackTestsTab   stackData={stackData} lastChangeout={lastChangeout} onAdd={e=>setStackDataExtra(d=>[...d,enrichStackRecord(e, lastChangeout, creoClean.rows)])} settings={settings} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
-        {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} />}
+        {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} currentActiveHrs={effectiveChargeActiveHrs} />}
         {activeTab==="thermal"      && <ThermalAnalysisTab thermalLog={thermalLog} thermalStats={thermalStats} onAddThermalEntry={entry=>setThermalLog(list=>[...list, entry])} onDeleteThermalEntry={id=>setThermalLog(list=>list.filter(entry=>entry.id!==id))} loggerLog={loggerLog} onImportLoggerData={rows=>setLoggerLog(list=>[...list, ...rows])} onClearLoggerData={()=>setLoggerLog([])} onUpdateCorrectionFactor={newDelta=>updateSetting("stackTempCorrectionC", newDelta)} settings={settings} onChangeSetting={updateSetting} canEdit={canEdit} />}
         {activeTab==="coa"          && <CoATab onImportWorkbook={importCreosoteWorkbook} creoDeliveries={platformState.cgb_creoDeliveries} creoDailyLog={creoClean.rows} creoFlagged={creoClean.flaggedCount} creoImportStatus={platformMeta && platformMeta.imports ? platformMeta.imports.creosote : null} coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="carbonquality" && <CarbonQualityTab carbonCoaData={carbonCoaData} onAdd={entry=>setCarbonCoaData(d=>[...d, entry])} onDelete={id=>setCarbonCoaData(d=>d.filter(e=>e.id!==id))} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} settings={settings} />}

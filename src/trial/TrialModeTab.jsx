@@ -187,7 +187,7 @@ const SITE_GROUPS = [
       { k: "hoursPerDay", label: "Abatement running hours", unit: "h/day", min: 4, max: 24, step: 0.1 },
       { k: "flow0", label: "Current system flow", unit: "m3/h", min: 3000, max: 15000, step: 100 },
       { k: "fanHeat0", label: "Temperature rise across fan", unit: DEG, min: 0, max: 6, step: 0.1 },
-      { k: "fanPower0", label: "Fan absorbed power now (confirm)", unit: "kW", min: 1, max: 100, step: 1 },
+      { k: "fanPower0", label: "Fan electrical power now (confirm)", unit: "kW", min: 1, max: 100, step: 1 },
       { k: "moistureAdd", label: "Process water vapour above ambient", unit: "kPa", min: 0, max: 2, step: 0.05 },
     ],
   },

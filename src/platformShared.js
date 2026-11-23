@@ -18,6 +18,7 @@ export function createDefaultSettings() {
     bedMass: 6000,
     flowM3hr: 9000,
     crossSectionM2: 1.5,
+    inletVOCmgm3: 400,
     naphthaleneFrac: 0.53,
     utilisationRate: 0.82,
     typicalTempC: 12.0,
