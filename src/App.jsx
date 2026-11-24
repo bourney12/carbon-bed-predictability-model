@@ -6,6 +6,7 @@ import {
 import { createDefaultPlatformState } from "./platformShared.js";
 import { cleanCreoLog, cleanUsageKg } from "./creoUsage.js";
 import TrialModeTab from "./trial/TrialModeTab.jsx";
+import { calibrateHotDay, pahRiskDays, pahSeasonOutlook, hindcast as pahHindcast } from "./pahRisk.js";
 
 // ============================================================
 // BRAND TOKENS
@@ -94,8 +95,8 @@ function useTheme() {
 }
 const MONO = "'JetBrains Mono', Consolas, 'Courier New', monospace";
 const HEAD_FONT = "'Space Grotesk', Inter, system-ui, sans-serif";
-const MODEL_VERSION = "v2.8.1";
-const MODEL_BUILD_DATE = "2026-11-23";
+const MODEL_VERSION = "v2.9.0";
+const MODEL_BUILD_DATE = "2026-11-24";
 
 // ============================================================
 // CONSTANTS
@@ -4110,7 +4111,7 @@ function ThermalLogChart({ thermalLog, settings }) {
 // ============================================================
 // TEMPERATURE ANALYSIS TAB
 // ============================================================
-function TempAnalysisTab({ vocC, pahC, settings }) {
+function TempAnalysisTab({ vocC, pahC, settings, pahRisk }) {
   const nf = settings.naphthaleneFrac;
   const stackTempCorrection = settings.stackTempCorrectionC ?? 10.3;
   const pahThresh500 = pahFailTemp(500, pahC);
@@ -4143,14 +4144,21 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
     const ambT = Math.round(temps.reduce((a, t) => a + t, 0) / temps.length * 10) / 10;
     const warmest = Math.max(...temps);
     const warmMonth = monthName(d.months[temps.indexOf(warmest)]);
-    const pahGoverns = ambT >= pahAmbientThreshold_C;
+    // v2.9.0: season PAH band = worst hot-day level among the season's months (same as Home and the plan).
+    const order = ["Low","Moderate","Elevated","High"];
+    const hotMonths = pahRisk ? d.months.map(m => pahRisk.season[m]) : null;
+    const worstHot = hotMonths ? hotMonths.reduce((w, o) => order.indexOf(o.level) > order.indexOf(w.level) ? o : w, hotMonths[0]) : null;
+    const pahGoverns = worstHot ? worstHot.level === "High" : ambT >= pahAmbientThreshold_C;
     const margin = pahAmbientThreshold_C - warmest;
     const seasonTop = operativeTemp(ambT, settings.stackTempCorrectionC ?? FALLBACK_AMBIENT_TO_INLET_OFFSET_C);
-    const seasonBand = pahRiskLabelForOperativeTemp(seasonTop);
-    const bandNote = (seasonBand === "Elevated" || seasonBand === "High")
+    const seasonBand = worstHot ? worstHot.level : pahRiskLabelForOperativeTemp(seasonTop);
+    const hotNote = worstHot
+      ? "Hot-day PAH (" + pahRisk.pct + "th percentile): in " + monthName(worstHot.m) + " a bed can carry about " + (worstHot.days != null ? worstHot.days : "--") + " days of loading before a hot day (stack ~" + worstHot.stackHot.toFixed(0) + " C) could breach PAH."
+      : "";
+    const bandNote = worstHot ? "" : (seasonBand === "Elevated" || seasonBand === "High")
       ? " Season-mean operative temperature " + seasonTop.toFixed(1) + " C is in the " + seasonBand.toLowerCase() + " PAH band: older beds breach at lower temperatures (the 2026 summer bed exceeded the PAH limit at 25.5 to 33 C stack)."
       : "";
-    const pahNote = pahGoverns
+    const pahNote = worstHot ? hotNote : pahGoverns
       ? "Mean ambient " + ambT.toFixed(1) + " C is at or above the PAH threshold (~" + pahAmbientThreshold_C.toFixed(1) + " C ambient, 500 hr bed): PAH governs this season."
       : margin <= 4
         ? "Warmest month " + warmMonth + " (" + warmest.toFixed(1) + " C mean) is within " + margin.toFixed(1) + " C of the PAH threshold (~" + pahAmbientThreshold_C.toFixed(1) + " C ambient, 500 hr bed). Warm spells and older beds can cross it: watch the PAH forecast."
@@ -4158,7 +4166,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
     const pahNoteFull = (pahNote + bandNote).trim();
     const ambientNote = "Mean " + ambT.toFixed(1) + " C (" + d.months.map(m => monthName(m) + " " + BOSTON_MONTHLY_TEMPS[m].toFixed(1)).join(", ") + "). " +
       (pahGoverns ? "PAH-led scheduling." : "VOC saturation is the operative constraint on climate averages.");
-    return { season:d.season, ambT, rh:d.rh, pahGoverns, pahNote:pahNoteFull, ambientNote };
+    return { season:d.season, ambT, rh:d.rh, pahGoverns, pahNote:pahNoteFull, ambientNote, seasonBand };
   });
   return (
     <div>
@@ -4242,7 +4250,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
               s.ambT, s.rh, vocC, nf
             );
             // Same PAH risk scale as the Overview season strip (season-mean operative temperature).
-            const pahBand = pahRiskLabelForOperativeTemp(tOp);
+            const pahBand = s.seasonBand || pahRiskLabelForOperativeTemp(tOp);
             const pahOk = !s.pahGoverns && pahBand === "Low";
             const borderColor = s.pahGoverns
               ? C.red
@@ -4379,7 +4387,7 @@ function TempAnalysisTab({ vocC, pahC, settings }) {
 // ============================================================
 // FORWARD FORECAST TAB
 // ============================================================
-function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeout, onChangeoutDateChange, vocC, pahC, thermalStats, canEdit, currentActiveHrs }) {
+function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeout, onChangeoutDateChange, vocC, pahC, thermalStats, canEdit, currentActiveHrs, pahRisk }) {
   const today = useMemo(()=>new Date(),[]);
   const [mode, setMode] = useState("seasonal");
   const [flatTemp, setFlatTemp] = useState(settings.typicalTempC);
@@ -4426,7 +4434,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
       });
   },[mode, liveTemps]);
 
-  const forecast = useMemo(()=>buildForwardForecast({
+  const forecastRaw = useMemo(()=>buildForwardForecast({
     startDate: today,
     startActiveHrs,
     utilisationPct,
@@ -4443,6 +4451,16 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
     settings,
     forecastRH: settings.useConservativeRH ? 90 : 80,
   }),[today,startActiveHrs,utilisationPct,mode,flatTemp,monthlyTemps,liveTemps,activeAmbientToInletOffset,pahTempOverride,vocC,pahC,settings]);
+  // v2.9.0: the PAH risk label on each day is the hot-day risk for the current bed (same as Home),
+  // replacing the fixed operative-temperature bands.
+  const forecast = useMemo(()=>{
+    if (!pahRisk) return forecastRaw;
+    const rows = forecastRaw.rows.map(r => {
+      const pr = pahRisk.days.rows[r.day];
+      return pr ? { ...r, pahRisk: pr.level } : r;
+    });
+    return { ...forecastRaw, rows };
+  }, [forecastRaw, pahRisk]);
 
   const binding = (() => {
     const sameBedActive = settings.isSameCarbonCharge && forecast.sameBedLimit;
@@ -4654,6 +4672,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
           <StatPill label="Predicted VOC Breach" value={forecast.vocBreach?forecast.vocBreach.date:"--"} unit="" color={C.amber} sub={`${forecast.vocBreach?forecast.vocBreach.day:"--"} days / ${forecast.vocBreach?forecast.vocBreach.activeHrs.toLocaleString():"--"} active hrs`} />
           <StatPill label="VOC Confidence Range" value={vocEarlyDate} unit="" color={C.blue} sub={`to ${vocLateDate}`} />
           <StatPill label="Predicted PAH Breach" value={forecast.pahBreach?forecast.pahBreach.date:"--"} unit="" color={C.red} sub={forecast.pahBreach?`predictPAH = ${forecast.pahBreach.pahPred.toLocaleString()} ug/m3 at breach`:"Not within horizon"} />
+          {pahRisk ? <StatPill label={"Hot-day PAH risk (P" + pahRisk.pct + ")"} value={pahRisk.first ? isoDateFromDate(pahRisk.first.date) : "--"} unit="" color={C.red} sub={pahRisk.first ? "a 1-in-" + Math.round(100 / (100 - pahRisk.pct)) + " hot day could breach from here" : "Not within 365 days"} /> : null}
           <StatPill label="Binding Constraint" value={binding.type} unit="" color={binding.type==="PAH"?C.red:binding.type==="VOC"?C.amber:C.teal} sub="Earlier predicted breach" />
           <StatPill label="Latest Stack Test" value={latestTestDate} unit="" color={C.blue} sub={`${preTestBufferDays} days / ${preTestBufferActiveHrs} active hrs buffer (whichever later)`} />
           <StatPill label="Change carbon by" value={binding.row?binding.row.date:"--"} unit="" color={binding.type==="PAH"?C.red:C.amber} sub="Binding breach date" />
@@ -4721,7 +4740,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
               <div style={{ fontSize:12, color:C.muted, fontWeight:700 }}>Day {row.day} | {row.date}</div>
               <div style={{ fontSize:12, fontFamily:MONO, color:C.ink }}>Amb {row.ambient}C</div>
               <div style={{ fontSize:12, fontFamily:MONO, color:row.tOperative>=26?C.red:C.blue }}>T_op {row.tOperative}C</div>
-              <div style={{ fontSize:12, color:C.muted }}>{row.source} | PAH {row.pahRisk}</div>
+              <div style={{ fontSize:12, color:C.muted }}>{row.source} | hot-day PAH {row.pahRisk}</div>
             </div>
           ))}
         </div>
@@ -5228,6 +5247,14 @@ function SettingsTab({ settings, onChange, lastChangeout, onChangeoutDateChange,
           <Input label="Carbon-inlet VOC (mg/m3, assumed)" type="number" step="10" min={10} value={settings.inletVOCmgm3 != null ? settings.inletVOCmgm3 : 400} onChange={v=>onChange("inletVOCmgm3",Math.max(10,v||400))} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
           <Input label="WJ Naph/TVOC Fraction (%)" type="number" step="0.5" value={(settings.naphthaleneFrac*100).toFixed(1)} onChange={v=>onChange("naphthaleneFrac",v/100)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
           <Input label="Utilisation Rate (0-1)" type="number" step="0.01" min={0} max={1} value={settings.utilisationRate} onChange={v=>onChange("utilisationRate",v)} style={{ flex:"1 1 150px" }} disabled={!canEdit} />
+          <div style={{ flex:"1 1 150px", marginBottom:14, display:"flex", flexDirection:"column", justifyContent:"flex-end" }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:C.muted, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6, lineHeight:1.2 }}>Hot-day PAH risk percentile</label>
+            <select value={settings.pahRiskPercentile || 90} onChange={e=>onChange("pahRiskPercentile", parseInt(e.target.value, 10))} disabled={!canEdit} style={{ width:"100%", height:40, padding:"8px 12px", border:`1px solid ${C.border}`, borderRadius:10, fontSize:14, background:C.surface2, color:C.ink, boxSizing:"border-box", fontFamily:"inherit" }}>
+              <option value={80}>80th - hottest 1 day in 5</option>
+              <option value={90}>90th - hottest 1 day in 10 (recommended)</option>
+              <option value={95}>95th - hottest 1 day in 20</option>
+            </select>
+          </div>
           <Input label="Stack Temp Correction Factor (C)" type="number" step="0.5" min={0} max={20} value={settings.stackTempCorrectionC} onChange={v=>onChange("stackTempCorrectionC",Math.max(0,Math.min(20,v||0)))} style={{ flex:"1 1 210px" }} disabled={!canEdit} />
           <Input label="Pre-Test Buffer (days)" type="number" step="1" min={0} max={60} value={settings.preTestBufferDays} onChange={v=>onChange("preTestBufferDays",Math.max(0,Math.min(60,v||0)))} style={{ flex:"1 1 170px" }} disabled={!canEdit} />
           <Input label="Pre-Test Buffer (active hrs)" type="number" step="10" min={50} max={400} value={settings.preTestBufferActiveHrs} onChange={v=>onChange("preTestBufferActiveHrs",Math.max(50,Math.min(400,v||150)))} style={{ flex:"1 1 190px" }} disabled={!canEdit} />
@@ -5505,7 +5532,60 @@ function MeterBar({ label, value, limit, unit, note }) {
   );
 }
 
-function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, ambient, ambientSource, rh, creoDailyLog, creoDeliveries, platformMeta, onNavigate, creoModel, creoBed, opLoo, canEdit, onRecordChangeout, changeoutList }) {
+function pahLevelTone(level) {
+  return level === "High" ? "bad" : level === "Elevated" ? "warn" : level === "Moderate" ? "info" : "ok";
+}
+
+// v2.9.0 hot-day PAH risk panel (Home).
+function HotDayPAHPanel({ pahRisk, breachDate }) {
+  if (!pahRisk) return null;
+  const pctText = pahRisk.pct === 90 ? "the hottest 1 day in 10" : pahRisk.pct === 95 ? "the hottest 1 day in 20" : pahRisk.pct === 80 ? "the hottest 1 day in 5" : "a " + pahRisk.pct + "th-percentile day";
+  const strip = pahRisk.days.rows.slice(0, 16);
+  const first = pahRisk.first;
+  const firstIso = first ? isoDateFromDate(first.date) : null;
+  const beforeVOC = first && breachDate && firstIso < breachDate;
+  const unitLoad = v => pahRisk.kind === "creo" ? Math.round(v).toLocaleString("en-GB") + " t of creosote" : Math.round(v).toLocaleString("en-GB") + " run hours";
+  const headTone = !first ? "ok" : first.day <= 7 ? "bad" : first.day <= 30 ? "warn" : "info";
+  const headline = !first
+    ? "No hot-day PAH risk forecast for this carbon bed in the next 12 months."
+    : first.day === 0 ? "A hot day today could push PAH over the limit."
+    : "From " + fmtDateShort(firstIso) + " (in " + first.day + " days) a hot day could push PAH over the limit.";
+  return (
+    <Panel>
+      <PanelTitle title="Hot-day PAH risk" sub={"PAH on " + pctText + " for this carbon bed. " + (pahRisk.liveDays ? "The next " + pahRisk.liveDays + " days use the live weather forecast, then Boston climate." : "Live forecast unavailable: Boston climate used.")} right={<div style={{ display:"flex", gap:14, flexWrap:"wrap" }}><LegendDot tone="ok" label="Low" /><LegendDot tone="info" label="Moderate" /><LegendDot tone="warn" label="Elevated" /><LegendDot tone="bad" label="High" /></div>} />
+      <div style={{ display:"flex", alignItems:"flex-start", gap:10, flexWrap:"wrap", marginBottom:14 }}>
+        <Chip tone={headTone}>{!first ? "Low" : first.day <= 7 ? "Now" : first.day <= 30 ? "Soon" : "Later"}</Chip>
+        <div style={{ fontSize:15, color:C.ink, lineHeight:1.5, flex:"1 1 320px" }}>
+          {headline}
+          {first ? " The bed will have about " + unitLoad(first.load) + " on it, and the gas could reach " + first.stackHot.toFixed(0) + " C at the stack." : ""}
+          {beforeVOC ? <b> This is before the VOC changeout date ({fmtDateShort(breachDate)}), so on this bed PAH may set the limit.</b> : null}
+        </div>
+      </div>
+      <div style={{ overflowX:"auto", paddingBottom:4 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(16, minmax(52px, 1fr))", gap:6, minWidth:860 }}>
+          {strip.map(r => (
+            <div key={r.day} title={"Hot-day stack " + r.stackHot.toFixed(1) + " C, PAH " + Math.round(r.pahHot) + " ug/m3 (" + Math.round(r.ratio * 100) + "% of limit)"} style={{ padding:"8px 4px", borderRadius:10, background:toneSoft(pahLevelTone(r.level)), border:"1px solid " + alpha(toneColor(pahLevelTone(r.level)), 35), textAlign:"center" }}>
+              <div style={{ fontSize:11, color:C.muted }}>{r.date.toLocaleDateString("en-GB", { weekday:"short" })}</div>
+              <div style={{ fontSize:12, fontWeight:600, color:C.ink }}>{r.date.getDate()}</div>
+              <div style={{ fontFamily:MONO, fontSize:14, fontWeight:600, color:toneColor(pahLevelTone(r.level)), marginTop:4 }}>{Math.round(r.ratio * 100)}%</div>
+              <div style={{ fontSize:10, color:C.muted }}>{r.live ? "forecast" : "climate"}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ fontSize:13, color:C.muted, marginTop:8 }}>Each day shows hot-day PAH as a % of the {PAH_ELV.toLocaleString("en-GB")} ug/m3 limit.</div>
+      <Fold title="How this works and what to do">
+        <div style={{ fontSize:14, color:C.muted, lineHeight:1.6, display:"flex", flexDirection:"column", gap:8 }}>
+          <div>PAH breaks through when the gas is hot, so the risk comes from hot days, not average weather. The model takes the expected stack temperature for each day and adds the hot-day spread seen in the stack tests (stack running {pahRisk.hot.mu.toFixed(1)} C above the weather-based estimate on average, give or take {pahRisk.hot.sd.toFixed(1)} C, from {pahRisk.hot.n} tests). It then applies the {pahRisk.kind === "creo" ? "creosote-throughput" : "run-hours"} PAH model for the bed's loading on that day.</div>
+          <div>Back-tested on the past stack tests, this rule would have flagged {pahRisk.caught} of {pahRisk.nOver} PAH exceedances, with {pahRisk.falseAlarms} false alarm{pahRisk.falseAlarms === 1 ? "" : "s"} (summer tests that fell on cooler days). It is a risk warning, not a prediction of a stack test result.</div>
+          <div><b style={{ color:C.ink }}>On High days:</b> move vacuum releases, door openings and transfers to the coolest hours, check the bed inlet temperature on the logger, and avoid timing a stack test or carbon decision on that day without knowing the temperature. If High days keep coming, the bed needs changing sooner or cooling (fan after the bed, tank vent controls). See Trial Mode.</div>
+        </div>
+      </Fold>
+    </Panel>
+  );
+}
+
+function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, ambient, ambientSource, rh, creoDailyLog, creoDeliveries, platformMeta, onNavigate, creoModel, creoBed, opLoo, canEdit, onRecordChangeout, changeoutList, pahRisk }) {
   const today = useMemo(()=>new Date(), []);
   const { fc, binding, bufferDays } = useMemo(()=>forecastFrom(today, activeHrs, settings, vocC, pahC), [today, activeHrs, settings, vocC, pahC]);
   const outlook = useMemo(()=>seasonOutlook(settings, vocC), [settings, vocC]);
@@ -5529,13 +5609,15 @@ function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, am
   const modelOver = vocNow >= VOC_ELV || pahNow >= PAH_ELV;
   const modelNear = vocNow >= VOC_ELV * 0.75 || pahNow >= PAH_ELV * 0.75;
 
+  const hotSoon = pahRisk && pahRisk.first && pahRisk.first.day <= 7;
   let status = "ok";
   if (modelOver || latestOver || (testDay != null && testDay <= 0)) status = "bad";
-  else if (modelNear || (testDay != null && testDay <= 14)) status = "warn";
+  else if (modelNear || hotSoon || (testDay != null && testDay <= 14)) status = "warn";
   const statusTitle = status === "ok" ? "All good" : status === "warn" ? "Action needed soon" : "Action needed now";
   const lifeText = daysLeft != null ? "The carbon bed has about " + daysLeft + " days of life left." : "The carbon bed is not forecast to reach its limit in the next 12 months.";
   const emissionsText = modelOver ? "The model estimates emissions are over the permit limit." : latestOver ? "The last stack test was over the permit limit." : "Emissions are estimated to be within permit limits.";
   const nextJob = testDate == null ? "No stack test needed in the next 12 months." : testDay <= 0 ? "Book the confirmatory stack test now." : "Next job: book a stack test for before " + fmtDateShort(testDate) + ".";
+  const hotText = hotSoon ? (pahRisk.first.day === 0 ? " A hot day today could push PAH over the limit." : " A hot day within " + pahRisk.first.day + " days could push PAH over the limit.") : "";
 
   const tempTone = stackNow >= pahLimitTemp ? "bad" : stackNow >= pahLimitTemp - 4 ? "warn" : "ok";
   const tempText = tempTone === "ok" ? "Low. The gas reaching the carbon is cool enough that PAH is unlikely to break through."
@@ -5565,7 +5647,7 @@ function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, am
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:13, color:C.muted }}>{today.toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"long", year:"numeric" })}</div>
             <h1 style={{ margin:"4px 0 6px", fontFamily:HEAD_FONT, fontWeight:600, fontSize:"clamp(22px, 3vw, 30px)", color:C.ink, lineHeight:1.2 }}>{statusTitle}</h1>
-            <div style={{ fontSize:16, color:C.ink, lineHeight:1.5 }}>{emissionsText} {lifeText} <b>{nextJob}</b></div>
+            <div style={{ fontSize:16, color:C.ink, lineHeight:1.5 }}>{emissionsText}{hotText} {lifeText} <b>{nextJob}</b></div>
           </div>
         </div>
         {canEdit ? <Btn variant="primary" onClick={onRecordChangeout}>Record carbon change</Btn> : null}
@@ -5658,6 +5740,8 @@ function HomeTab({ stackData, settings, lastChangeout, vocC, pahC, activeHrs, am
           <div style={{ fontSize:13, color:C.muted, marginTop:6 }}>Outside {ambient.toFixed(1)} C ({ambientSource}).</div>
         </Panel>
       </div>
+
+      <HotDayPAHPanel pahRisk={pahRisk} breachDate={breachDate} />
 
       <Panel>
         <PanelTitle title="Carbon life through the year" sub="How long fresh carbon is expected to last if it is fitted in each month. Summer heat shortens it." right={<div style={{ display:"flex", gap:14, flexWrap:"wrap" }}><LegendDot tone="ok" label="Long" /><LegendDot tone="warn" label="Medium" /><LegendDot tone="bad" label="Short" /></div>} />
@@ -5765,7 +5849,7 @@ function ModelComparisonPanel({ today, opBinding, opFc, bufferDays, opLoo, cm, c
   );
 }
 
-function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoModel, creoBed, opLoo, onNavigate }) {
+function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoModel, creoBed, opLoo, onNavigate, pahRisk }) {
   const today = useMemo(()=>new Date(), []);
   const [basis, setBasis] = useState("hours");
   const current = useMemo(()=>forecastFrom(today, activeHrs, settings, vocC, pahC), [today, activeHrs, settings, vocC, pahC]);
@@ -5791,7 +5875,14 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
       const end = addDays(simStart, res.binding.row.day);
       const life = Math.max(1, daysBetween(start, end));
       const testDate = addDays(simStart, Math.max(0, res.binding.row.day - res.bufferDays));
-      beds.push({ start, end, life, type:res.binding.type, testDate });
+      // v2.9.0: first hot-day PAH risk within this bed's life.
+      let pahDate = null;
+      if (pahRisk) {
+        const load0 = pahRisk.kind === "creo" ? tonnes : hrs;
+        const pr = pahRiskDays({ ...pahRisk.base, start:simStart, horizon:res.binding.row.day, load0, ratePerDay:pahRisk.rate, liveMeans: i === 0 ? pahRisk.days.rows.filter(r => r.live).map(r => r.ambient) : [] });
+        if (pr.first) pahDate = pr.first.date;
+      }
+      beds.push({ start, end, life, type:res.binding.type, testDate, pahDate });
       if (end >= windowEnd) break;
       start = end; simStart = end; hrs = 0; tonnes = 0;
     }
@@ -5801,12 +5892,12 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
     for (let k = 0; k < 12; k++) {
       const d = new Date(windowStart.getFullYear(), windowStart.getMonth() + k, 1);
       const amb = BOSTON_MONTHLY_TEMPS[d.getMonth()];
-      const pah = pahRiskLabelForOperativeTemp(operativeTemp(amb, settings.stackTempCorrectionC ?? FALLBACK_AMBIENT_TO_INLET_OFFSET_C));
-      months.push({ key:k, name:MONTH_NAMES[d.getMonth()] + (d.getMonth() === 0 || k === 0 ? " " + String(d.getFullYear()).slice(2) : ""), pahSeason: pah !== "Low" });
+      const pah = pahRisk ? pahRisk.season[d.getMonth()].level : pahRiskLabelForOperativeTemp(operativeTemp(amb, settings.stackTempCorrectionC ?? FALLBACK_AMBIENT_TO_INLET_OFFSET_C));
+      months.push({ key:k, name:MONTH_NAMES[d.getMonth()] + (d.getMonth() === 0 || k === 0 ? " " + String(d.getFullYear()).slice(2) : ""), pahSeason: pahRisk ? (pah === "High" || pah === "Elevated") : pah !== "Low" });
     }
     const pos = d => Math.max(0, Math.min(100, (d - windowStart) / 86400000 / span * 100));
     return { beds, changeouts, months, pos, windowStart, windowEnd };
-  }, [today, lastChangeout, activeHrs, settings, vocC, pahC, basis, trialReady, creoModel, creoBed]);
+  }, [today, lastChangeout, activeHrs, settings, vocC, pahC, basis, trialReady, creoModel, creoBed, pahRisk]);
   const outlook = useMemo(()=>seasonOutlook(settings, vocC), [settings, vocC]);
   const seasons = [["Winter", [11,0,1]], ["Spring", [2,3,4]], ["Summer", [5,6,7]], ["Autumn", [8,9,10]]].map(function(s) {
     const days = Math.round(s[1].reduce((acc, m)=>acc + outlook[m].days, 0) / 3);
@@ -5866,6 +5957,7 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
                       <div title={fmtDateShort(b.start) + " to " + (b.end ? fmtDateShort(b.end) : "beyond horizon") + " (" + b.type + ")"} style={{ position:"absolute", top:0, bottom:0, left:s + "%", width:Math.max(0.5, e - s) + "%", background:toneColor(tone), borderRadius:6, display:"flex", alignItems:"center", overflow:"hidden" }}>
                         <span style={{ fontFamily:MONO, fontSize:12, fontWeight:600, color:C.bg, padding:"0 8px", whiteSpace:"nowrap" }}>{b.life ? b.life + " d" : ""}</span>
                       </div>
+                      {b.pahDate && plan.pos(b.pahDate) > 0 && plan.pos(b.pahDate) < 100 ? <div title={"Hot-day PAH risk from " + fmtDateShort(b.pahDate)} style={{ position:"absolute", top:-4, bottom:-4, left:plan.pos(b.pahDate) + "%", width:3, marginLeft:-1, borderRadius:2, background:C.red, boxShadow:"0 0 0 2px " + C.surface }} /> : null}
                       {testPos != null && testPos > 0 && testPos < 100 ? <div title={"Stack test by " + fmtDateShort(b.testDate)} style={{ position:"absolute", top:7, left:testPos + "%", width:12, height:12, marginLeft:-6, transform:"rotate(45deg)", background:C.rund, border:`2px solid ${C.surface}` }} /> : null}
                     </div>
                   </div>
@@ -5874,7 +5966,7 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
             </div>
           </div>
         </div>
-        <div style={{ fontSize:12, color:C.muted, marginTop:12 }}>Shaded months: PAH temperature season at climate averages. Each later bed is assumed to start fresh on its predecessor's forecast date; dates move with every stack test and recalibration.</div>
+        <div style={{ fontSize:12, color:C.muted, marginTop:12 }}>Shaded months: hot-day PAH season (Elevated or High below). Red line: from this date a hot day could push PAH over the limit on that bed. Each later bed is assumed to start fresh on its predecessor's forecast date; dates move with every stack test and recalibration.</div>
       </Panel>
 
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap:20 }}>
@@ -5890,6 +5982,21 @@ function SeasonPlanTab({ settings, lastChangeout, vocC, pahC, activeHrs, creoMod
             ))}
           </div>
         </Panel>
+        {pahRisk ? (
+          <Panel>
+            <PanelTitle title="Hot-day PAH by month" sub={"Days of loading a bed can carry before " + (pahRisk.pct === 90 ? "a 1-in-10" : "a " + pahRisk.pct + "th-percentile") + " hot day could push PAH over the limit, at " + pahRisk.rate.toFixed(1) + (pahRisk.kind === "creo" ? " t/day creosote." : " run hrs/day.")} />
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(6, minmax(0, 1fr))", gap:8 }}>
+              {pahRisk.season.map(o => (
+                <div key={o.m} title={"Hot-day stack " + o.stackHot.toFixed(1) + " C"} style={{ padding:"8px 6px", borderRadius:10, background:toneSoft(pahLevelTone(o.level)), textAlign:"center" }}>
+                  <div style={{ fontSize:12, fontWeight:600, color:C.muted }}>{MONTH_NAMES[o.m]}</div>
+                  <div style={{ fontFamily:MONO, fontSize:15, fontWeight:600, color:toneColor(pahLevelTone(o.level)) }}>{o.days != null ? (o.days > 365 ? ">365" : o.days) : "--"}</div>
+                  <div style={{ fontSize:11, color:C.muted }}>{o.level}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize:12, color:C.muted, marginTop:10 }}>High under 30 days, Elevated under 60, Moderate under 120. Fitting fresh carbon before the hot months does not remove the risk on its own: the 2025 summer bed breached PAH on fresh carbon.</div>
+          </Panel>
+        ) : null}
         <Panel>
           <PanelTitle title="What would change this plan" />
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
@@ -6302,6 +6409,7 @@ export default function App() {
   const chargeLog = platformState.cgb_chargeLog;
   const setChargeLog = useCallback(nextValueOrUpdater => updateKey("cgb_chargeLog", nextValueOrUpdater), [updateKey]);
   const [weather, setWeather]           = useState(null);
+  const [liveDaily, setLiveDaily]       = useState(null); // v2.9.0: 16-day daily-mean forecast for hot-day PAH risk
   const lastChangeout = platformState.cgb_lastChangeout;
   const storedChangeouts = platformState.cgb_changeouts;
   const changeoutList = useMemo(()=>changeoutHistory(storedChangeouts, lastChangeout), [storedChangeouts, lastChangeout]);
@@ -6336,6 +6444,27 @@ export default function App() {
   }, [platformState.cgb_creoDailyLog]);
   const appAmbientTemp = weather ? weather.temperature_2m : latestScadaReading ? latestScadaReading.ambientC : settings.typicalTempC;
   const creoBed = useMemo(()=>creosoteBedState(creoClean.rows, lastChangeout, settings, new Date()), [creoClean, lastChangeout, settings]);
+  // v2.9.0 hot-day PAH risk: PAH forecast on the hottest 1-in-N day, not the monthly mean.
+  // Uses the creosote-throughput PAH fit when it is calibrated (it back-tests better), else run hours.
+  const pahRisk = useMemo(()=>{
+    const pct = settings.pahRiskPercentile || 90;
+    const hot = calibrateHotDay(stackData, BOSTON_MONTHLY_TEMPS, STACK_TEMP_A, STACK_TEMP_B);
+    const useCreo = !!(creoModel && creoModel.ready && creoModel.pah);
+    const model = useCreo ? { a:creoModel.pah.a, b:creoModel.pah.b, c:creoModel.pah.c } : { a:pahC.a, b:pahC.b, c:pahC.c };
+    const load0 = useCreo ? creoBed.tonnes : effectiveChargeActiveHrs;
+    const rate = useCreo ? creoBed.rate : 24 * (settings.utilisationRate || 0.82);
+    const base = { model, hot, stackA:STACK_TEMP_A, stackB:STACK_TEMP_B, tMonth:BOSTON_MONTHLY_TEMPS, percentile:pct, elv:PAH_ELV };
+    const liveMeans = liveDaily ? liveDaily.map(d => d.mean) : [];
+    const days = pahRiskDays({ ...base, start:new Date(), horizon:365, load0, ratePerDay:rate, liveMeans });
+    const season = pahSeasonOutlook({ ...base, ratePerDay:rate });
+    const back = pahHindcast(stackData, { ...base, loadOf: useCreo ? (d => d.creoT || 0) : (d => effectiveHoursForStackRecord(d)) });
+    const over = back.filter(b => b.over);
+    return {
+      base, model, pct, hot, kind: useCreo ? "creo" : "op", unit: useCreo ? "t" : "hrs", load0, rate, days, season,
+      first: days.first, liveDays: liveMeans.length, liveDates: liveDaily ? liveDaily.map(d => d.date) : [],
+      back, caught: over.filter(b => b.flagged).length, nOver: over.length, falseAlarms: back.filter(b => b.flagged && !b.over).length,
+    };
+  }, [settings.pahRiskPercentile, settings.utilisationRate, stackData, creoModel, pahC, creoBed, effectiveChargeActiveHrs, liveDaily]);
   // v2.6.0 Trial Mode: live calibration handed to the what-if engine (read-only there).
   // App PAH model is a*stackTemp + b*ln(t) + c; the engine uses a*ln(t) + b*T + c, so a and b swap.
   const trialCalibration = useMemo(()=>{
@@ -6369,6 +6498,23 @@ export default function App() {
   useEffect(()=>{
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m&timezone=Europe%2FLondon`)
       .then(r=>r.json()).then(d=>{if(d.current)setWeather(d.current);}).catch(()=>{});
+    // v2.9.0: 16-day daily-mean forecast feeds the hot-day PAH risk (climatology after that).
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&daily=temperature_2m_mean,temperature_2m_max,temperature_2m_min&forecast_days=16&timezone=Europe%2FLondon`)
+      .then(r=>r.json()).then(d=>{
+        const dl = d && d.daily;
+        if (!dl || !dl.time || !dl.time.length) return;
+        const rows = dl.time.map((t, i) => {
+          const mean = dl.temperature_2m_mean && dl.temperature_2m_mean[i] != null ? dl.temperature_2m_mean[i]
+            : (dl.temperature_2m_max && dl.temperature_2m_min && dl.temperature_2m_max[i] != null && dl.temperature_2m_min[i] != null ? (dl.temperature_2m_max[i] + dl.temperature_2m_min[i]) / 2 : null);
+          return { date: t, mean, max: dl.temperature_2m_max ? dl.temperature_2m_max[i] : null };
+        });
+        // Keep only the unbroken run from today so day 0 lines up with today.
+        const todayIso = isoDateFromDate(new Date());
+        const start = rows.findIndex(r => r.date === todayIso);
+        const run = [];
+        for (let i = Math.max(0, start); start >= 0 && i < rows.length && Number.isFinite(rows[i].mean); i++) run.push(rows[i]);
+        if (run.length) setLiveDaily(run);
+      }).catch(()=>{});
   },[]);
 
   useEffect(()=>{
@@ -6459,8 +6605,8 @@ export default function App() {
           </div>
         ) : null}
         {activeTab==="changes"      && <CarbonChangesTab history={changeoutList} stackData={stackData} canEdit={canEdit} onRecord={()=>setChangeoutOpen(true)} onUndoLast={undoLastChangeout} />}
-        {activeTab==="home"         && <HomeTab stackData={stackData} settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} ambient={appAmbientTemp} ambientSource={appAmbientSource} rh={appRH} creoDailyLog={platformState.cgb_creoDailyLog} creoDeliveries={platformState.cgb_creoDeliveries} platformMeta={platformMeta} onNavigate={navigateTo} creoModel={creoModel} creoBed={creoBed} opLoo={opLoo} canEdit={canEdit} onRecordChangeout={()=>setChangeoutOpen(true)} changeoutList={changeoutList} />}
-        {activeTab==="seasonplan"   && <SeasonPlanTab settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} creoModel={creoModel} creoBed={creoBed} opLoo={opLoo} onNavigate={navigateTo} />}
+        {activeTab==="home"         && <HomeTab stackData={stackData} settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} ambient={appAmbientTemp} ambientSource={appAmbientSource} rh={appRH} creoDailyLog={platformState.cgb_creoDailyLog} creoDeliveries={platformState.cgb_creoDeliveries} platformMeta={platformMeta} onNavigate={navigateTo} creoModel={creoModel} creoBed={creoBed} opLoo={opLoo} canEdit={canEdit} onRecordChangeout={()=>setChangeoutOpen(true)} changeoutList={changeoutList} pahRisk={pahRisk} />}
+        {activeTab==="seasonplan"   && <SeasonPlanTab settings={settings} lastChangeout={lastChangeout} vocC={vocC} pahC={pahC} activeHrs={effectiveChargeActiveHrs} creoModel={creoModel} creoBed={creoBed} opLoo={opLoo} onNavigate={navigateTo} pahRisk={pahRisk} />}
         {activeTab==="compliance"   && <ComplianceTab stackData={stackData} vocC={vocC} pahC={pahC} creoModel={creoModel} opLoo={opLoo} />}
         {activeTab==="dashboard"    && (
           <>
@@ -6476,12 +6622,12 @@ export default function App() {
         {activeTab==="dashboard"    && <DashboardTab    stackData={stackData} settings={settings} weather={weather} ambientOverride={appAmbientTemp} chargeLog={chargeLog} lastChangeout={lastChangeout} downtimeHrs={downtimeHrs} onDowntime={setDowntimeHrs} vocC={vocC} pahC={pahC} canEdit={canEdit} latestCarbonBatch={latestCarbonBatch} />}
         {activeTab==="cycles"       && <ChargeCyclesTab chargeLog={chargeLog} onAddCharge={c=>setChargeLog(l=>[...l,c])} onAddCharges={list=>setChargeLog(l=>[...l,...list])} onDeleteCharge={id=>setChargeLog(l=>l.filter(c=>c.id!==id))} lastChangeout={lastChangeout} settings={settings} vocC={vocC} canEdit={canEdit} />}
         {activeTab==="stack"        && <StackTestsTab   stackData={stackData} lastChangeout={lastChangeout} onAdd={e=>setStackDataExtra(d=>[...d,enrichStackRecord(e, lastChangeout, creoClean.rows)])} settings={settings} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
-        {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} currentActiveHrs={effectiveChargeActiveHrs} />}
+        {activeTab==="forecast"     && <ForwardForecastTab stackData={stackData} settings={settings} onSettingChange={updateSetting} lastChangeout={lastChangeout} onChangeoutDateChange={setLastChangeout} vocC={vocC} pahC={pahC} thermalStats={thermalStats} canEdit={canEdit} currentActiveHrs={effectiveChargeActiveHrs} pahRisk={pahRisk} />}
         {activeTab==="thermal"      && <ThermalAnalysisTab thermalLog={thermalLog} thermalStats={thermalStats} onAddThermalEntry={entry=>setThermalLog(list=>[...list, entry])} onDeleteThermalEntry={id=>setThermalLog(list=>list.filter(entry=>entry.id!==id))} loggerLog={loggerLog} onImportLoggerData={rows=>setLoggerLog(list=>[...list, ...rows])} onClearLoggerData={()=>setLoggerLog([])} onUpdateCorrectionFactor={newDelta=>updateSetting("stackTempCorrectionC", newDelta)} settings={settings} onChangeSetting={updateSetting} canEdit={canEdit} />}
         {activeTab==="coa"          && <CoATab onImportWorkbook={importCreosoteWorkbook} creoDeliveries={platformState.cgb_creoDeliveries} creoDailyLog={creoClean.rows} creoFlagged={creoClean.flaggedCount} creoImportStatus={platformMeta && platformMeta.imports ? platformMeta.imports.creosote : null} coaData={coaData} onAdd={e=>setCoaData(d=>[...d,e])} onImport={e=>setCoaData(d=>d.find(x=>x.certNo===e.certNo)?d:[...d,e])} settings={settings} onSettingChange={updateSetting} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} />}
         {activeTab==="carbonquality" && <CarbonQualityTab carbonCoaData={carbonCoaData} onAdd={entry=>setCarbonCoaData(d=>[...d, entry])} onDelete={id=>setCarbonCoaData(d=>d.filter(e=>e.id!==id))} onArchiveDocument={uploadDocument} canArchiveDocuments={canEdit} canEdit={canEdit} settings={settings} />}
         {activeTab==="documents"    && <DocumentLibraryTab adminData={adminData} isAdmin={isAdmin} onDownloadDocument={downloadDocument} />}
-        {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} />}
+        {activeTab==="tempanalysis" && <TempAnalysisTab vocC={vocC} pahC={pahC} settings={settings} pahRisk={pahRisk} />}
         {activeTab==="trialmode"    && <TrialModeTab appMode calibration={trialCalibration} defaults={trialDefaults} />}
         {activeTab==="bat"          && <BATComplianceTab settings={settings} onChange={updateSetting} canEdit={canEdit} stackData={stackData} />}
         {activeTab==="modeldetails" && <ModelDetailsTab stackData={stackData} vocC={vocC} pahC={pahC} settings={settings} latestCarbonBatch={latestCarbonBatch} />}
