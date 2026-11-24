@@ -66,7 +66,8 @@ const CSS = `
 `;
 
 export default function ProjectPlanView(props) {
-  const { scenario, sum, base, header } = props;
+  const { scenario, sum, base, header, locked, onCost } = props;
+  const costable = (w) => !locked && onCost && (w.deviceId || w.key === "leadlag" || w.key === "parallel" || w.key === "interstage");
   const [startIso, setStartIso] = useState(() => isoDate(nextMonday(new Date())));
   const [combined, setCombined] = useState(true);
   const [open, setOpen] = useState({});
@@ -213,7 +214,7 @@ export default function ProjectPlanView(props) {
           ))}
           {plan.uncostedVessel ? (
             <div className="note small" style={{ marginTop: 10 }}>
-              The extra carbon vessel has no cost entered, so the capex and payback leave it out. Enter the vessel and ductwork cost on the trial builder (Vessel / ductwork cost), or confirm that an existing vessel can be used. A new 6 t vessel with ductwork and dampers is a significant item: get supplier quotes.
+              Vessel cost not entered yet, so the capex and payback leave it out. Add it under Work packages below when a quote is available (or on the trial builder), or confirm that an existing vessel can be used.
             </div>
           ) : null}
         </div>
@@ -296,7 +297,15 @@ export default function ProjectPlanView(props) {
                 <div className="hd" onClick={() => setOpen(Object.assign({}, open, { [id]: !isOpen }))}>
                   <b>{w.title}</b>
                   <span className="chip">{w.owner}</span>
-                  <span className="chip">{money(w.capex || 0) + (w.vesselUncosted ? " + vessel" : "")}</span>
+                  {costable(w) ? (
+                    <label className="small mut row" style={{ gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                      {"Cost " + GBP}
+                      <input type="number" min={0} step={1000} value={w.capex ? w.capex : ""} placeholder="add" onChange={(e) => onCost(w, e.target.value)} style={{ width: 90, textAlign: "right" }} />
+                      {w.vesselUncosted ? <span className="chip a">not entered</span> : null}
+                    </label>
+                  ) : (
+                    <span className="chip">{money(w.capex || 0) + (w.vesselUncosted ? " + vessel" : "")}</span>
+                  )}
                   <span className="chip">{(w.shutdownDays || 0) ? w.shutdownDays + " shutdown days" : w.atChangeout ? "at a changeout" : "no shutdown"}</span>
                   <span className="sp" />
                   <span className="mut small">{isOpen ? "Hide" : "Details"}</span>

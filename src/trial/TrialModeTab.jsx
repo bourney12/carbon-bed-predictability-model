@@ -712,6 +712,14 @@ export default function TrialModeTab(props) {
     if (locked) return;
     setScenarios((list) => list.map((s) => (s.id === active.id ? fn(clone(s)) : s)));
   };
+  // Project plan: costs can be entered against each work package as quotes come in.
+  const setPlanCost = (wp, v) => {
+    const val = Math.max(0, Number(v) || 0);
+    if (wp.deviceId) return setDevice(wp.deviceId, "capex", val);
+    if (wp.key === "leadlag" || wp.key === "parallel") return update((s) => Object.assign(s, { vesselCapex: val }));
+    if (wp.key === "interstage") return update((s) => Object.assign(s, { interCapex: val }));
+    return null;
+  };
   const setDevice = (id, k, v) =>
     update((s) => {
       s.devices = s.devices.map((d) => (d.id === id ? Object.assign(d, { [k]: v }) : d));
@@ -1753,7 +1761,7 @@ export default function TrialModeTab(props) {
         ))}
       </div>
 
-      {view === "dash" ? (dashView || null) : view === "build" ? <div>{buildHeader}{pillsRow}{buildView}</div> : view === "plan" ? <ProjectPlanView scenario={active} sum={sA} base={resBase} baseMass={site.carbonMass0} header={<div>{buildHeader}{pillsRow}</div>} /> : view === "compare" ? <div><div className="bhead"><button onClick={() => setView("dash")}>{"\u2039 Dashboard"}</button><b>Full cost table</b></div>{compareView}</div> : view === "assume" ? assumeView : methodView}
+      {view === "dash" ? (dashView || null) : view === "build" ? <div>{buildHeader}{pillsRow}{buildView}</div> : view === "plan" ? <ProjectPlanView scenario={active} sum={sA} base={resBase} baseMass={site.carbonMass0} locked={locked} onCost={setPlanCost} header={<div>{buildHeader}{pillsRow}</div>} /> : view === "compare" ? <div><div className="bhead"><button onClick={() => setView("dash")}>{"\u2039 Dashboard"}</button><b>Full cost table</b></div>{compareView}</div> : view === "assume" ? assumeView : methodView}
     </div>
   );
 }
