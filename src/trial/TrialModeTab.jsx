@@ -27,6 +27,7 @@ import {
   tankHeadspace,
   extraPresets,
 } from "./trialEngine.js";
+import ProjectPlanView from "./ProjectPlanView.jsx";
 
 const DEG = "\u00B0C";
 const GBP = "\u00A3";
@@ -341,7 +342,7 @@ font-family:Inter,Segoe UI,system-ui,-apple-system,sans-serif;color:var(--ink);b
 .tm .basec .g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .tm .basec .g b{display:block;font-size:19px}
 .tm .rkw{overflow-x:auto}
-.tm .rk{display:grid;grid-template-columns:30px minmax(0,2.4fr) minmax(0,1.4fr) 66px 70px 64px 96px 72px 120px 52px;gap:12px;align-items:center;padding:10px 6px;border-bottom:1px solid var(--line);min-width:1000px}
+.tm .rk{display:grid;grid-template-columns:30px minmax(0,2.4fr) minmax(0,1.4fr) 66px 70px 64px 96px 72px 120px 100px;gap:12px;align-items:center;padding:10px 6px;border-bottom:1px solid var(--line);min-width:1050px}
 .tm .rk.h{font-size:11.5px;color:var(--mut);font-weight:600}
 .tm .rk.r{cursor:pointer}
 .tm .rk.r:hover,.tm .rk.r:focus-visible{background:var(--soft);outline:none}
@@ -655,6 +656,13 @@ export default function TrialModeTab(props) {
     const life = lifeByMonth(site, comp);
     return { sim, sum, life };
   }, [site, comp]);
+  // Project plan view compares against the current system (baseline), whatever the comparison is.
+  const baseScen = scenarios.find((s) => s.id === "baseline") || scenarios[0];
+  const resBase = useMemo(() => {
+    if (view !== "plan") return null;
+    if (comp.id === baseScen.id) return resC.sum;
+    return summarise(site, baseScen, simulate(site, baseScen));
+  }, [view, comp, baseScen, resC, site]);
   const refDoy = MONTH_MID[refMonth];
   const train = useMemo(() => runTrain(site, active, refDoy), [site, active, refDoy]);
   const brk = useMemo(() => capacityBreakdown(site, active, comp, refDoy), [site, active, comp, refDoy]);
@@ -693,6 +701,10 @@ export default function TrialModeTab(props) {
   const openTrial = (id) => {
     setActiveId(id);
     setView("build");
+  };
+  const openPlan = (id) => {
+    setActiveId(id);
+    setView("plan");
   };
 
   // ---- scenario editing helpers
@@ -1520,6 +1532,7 @@ export default function TrialModeTab(props) {
               </div>
               <div className="row">
                 <button className="w" onClick={() => openTrial(best.s.id)}>{"Open this trial \u203A"}</button>
+                <button className="o" onClick={() => openPlan(best.s.id)}>Project plan</button>
                 <button className="o" onClick={() => setView("compare")}>Full cost table</button>
               </div>
             </div>
@@ -1592,7 +1605,10 @@ export default function TrialModeTab(props) {
                   <span className="mini" role="img" aria-label={"Bed life by start month, Jan to Dec: " + r.life.map((x) => x.days).join(", ") + " days"}>
                     {r.life.map((x, j) => <i key={j} style={{ height: Math.round((Math.min(400, x.days) / 400) * 30) + 3, background: x.days > julBase ? "var(--acc)" : "var(--base)" }} />)}
                   </span>
-                  <span style={{ color: "var(--acc)", fontWeight: 600, textAlign: "right" }}>{"Open \u203A"}</span>
+                  <span style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                    <button className="ghost small" title="Project plan" onClick={(e) => { e.stopPropagation(); openPlan(r.s.id); }} onKeyDown={(e) => e.stopPropagation()} style={{ color: "var(--acc)", textDecoration: "underline" }}>Plan</button>
+                    <span style={{ color: "var(--acc)", fontWeight: 600 }}>{"Open \u203A"}</span>
+                  </span>
                 </div>
               );
             })}
@@ -1663,6 +1679,7 @@ export default function TrialModeTab(props) {
         </span>
       ) : null}
       <span className="sp" />
+      {view === "plan" ? <button onClick={() => setView("build")}>Forecast and builder</button> : !locked ? <button className="pri" onClick={() => setView("plan")}>{"Project plan \u203A"}</button> : null}
       {nextBest ? <button onClick={() => setActiveId(nextBest.id)}>{(rankIdx < 0 ? "Best: " : "Next best: ") + nextBest.name.slice(0, 40) + " \u203A"}</button> : null}
     </div>
   );
@@ -1731,12 +1748,12 @@ export default function TrialModeTab(props) {
       </div>
 
       <div className="tabs">
-        {[["dash", "Dashboard"], ["build", "Trial builder"], ["assume", "Assumptions"], ["method", "How it works"]].map((t) => (
+        {[["dash", "Dashboard"], ["build", "Trial builder"], ["plan", "Project plan"], ["assume", "Assumptions"], ["method", "How it works"]].map((t) => (
           <button key={t[0]} className={view === t[0] || (t[0] === "dash" && view === "compare") ? "act" : ""} onClick={() => setView(t[0])}>{t[1]}</button>
         ))}
       </div>
 
-      {view === "dash" ? (dashView || null) : view === "build" ? <div>{buildHeader}{pillsRow}{buildView}</div> : view === "compare" ? <div><div className="bhead"><button onClick={() => setView("dash")}>{"\u2039 Dashboard"}</button><b>Full cost table</b></div>{compareView}</div> : view === "assume" ? assumeView : methodView}
+      {view === "dash" ? (dashView || null) : view === "build" ? <div>{buildHeader}{pillsRow}{buildView}</div> : view === "plan" ? <ProjectPlanView scenario={active} sum={sA} base={resBase} baseMass={site.carbonMass0} header={<div>{buildHeader}{pillsRow}</div>} /> : view === "compare" ? <div><div className="bhead"><button onClick={() => setView("dash")}>{"\u2039 Dashboard"}</button><b>Full cost table</b></div>{compareView}</div> : view === "assume" ? assumeView : methodView}
     </div>
   );
 }

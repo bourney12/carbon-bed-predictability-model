@@ -95,7 +95,7 @@ function useTheme() {
 }
 const MONO = "'JetBrains Mono', Consolas, 'Courier New', monospace";
 const HEAD_FONT = "'Space Grotesk', Inter, system-ui, sans-serif";
-const MODEL_VERSION = "v2.9.0";
+const MODEL_VERSION = "v2.10.0";
 const MODEL_BUILD_DATE = "2026-11-24";
 
 // ============================================================
