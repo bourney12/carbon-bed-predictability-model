@@ -159,7 +159,7 @@ const FIELDS = {
 const SUMMER = MONTHS.map((x, i) => i >= 4 && i <= 8);
 const LEVERS = [
   { id: "leadlag", group: "Carbon arrangement", title: "Lead/lag beds", does: "Second vessel in series. The lead is emptied at the trigger and the lag moves up.", conf: "High confidence", apply: (s) => { s.arrangement = "leadlag"; s.beds = [newBed(s.beds[0].mass, s.beds[0].type), newBed(s.beds[0].mass, s.beds[0].type)]; } },
-  { id: "fanmove", group: "Temperature", title: "Move the fan after the bed", does: "Fan heat is added after the carbon instead of before it.", conf: "Needs measuring", apply: (s) => s.devices.push(makeDevice("fanmove")) },
+  { id: "fanmove", group: "Temperature", title: "Move the fan after the bed", does: "Fan heat is added after the carbon instead of before it.", conf: "Fan rise measured (4.0 C, 24 Nov)", apply: (s) => s.devices.push(makeDevice("fanmove")) },
   { id: "tankvent", group: "Tanks", title: "Tank vent dampers + P/V valves", does: "Stop the extraction pulling air through the hot work tanks and the storage tanks.", conf: "Needs measuring", apply: (s) => s.devices.push(makeDevice("tankvent")) },
   { id: "ventcond", group: "Tanks", title: "Work tank vent condenser", does: "Cool the work tank vent gas to 35 \u00B0C before it joins the main duct.", conf: "Needs measuring", apply: (s) => s.devices.push(makeDevice("ventcond")) },
   { id: "condenser", group: "Gas cooling", title: "Chilled condenser + reheat", does: "Cool the gas to 6 \u00B0C so naphthalene and PAH drop out, then lift it 3 \u00B0C.", conf: "Medium", apply: (s) => { s.devices.push(makeDevice("condenser", { pos: "pre" })); s.devices.push(makeDevice("reheat", { pos: "post", dT: 3 })); } },
@@ -1635,8 +1635,8 @@ export default function TrialModeTab(props) {
             {[
               ["Carbon inlet VOC + PAH test", "Sets condenser, tank and interstage results."],
               ["Air flow in each tank vent branch", "Work tanks first. Decides the tank damper and vent condenser case."],
-              ["Temperature rise across the fan", "Testo before and after. Sizes the fan-after-bed gain."],
-              ["Fan absorbed kW", "Sets the VSD energy saving (" + site.fanPower0 + " kW assumed)."],
+              ["Fan motor current (clamp meter)", "Confirms fan power and the VSD energy saving (" + site.fanPower0 + " kW from the measured 4.0 C fan rise)."],
+              ["Gas temperatures with both plants running", "Fan rise measured 4.0 C on Plant 1 only (24 Nov). Repeat at full load and in summer."],
             ].map((m, i) => (
               <div key={m[0]} className="step"><span className="n">{i + 1}</span><span><b>{m[0]}</b><div className="small mut">{m[1]}</div></span></div>
             ))}
@@ -1791,7 +1791,7 @@ function MethodNotes(props) {
         <h4>Schedule heavy steps for cooler hours <span className="tag">medium - estimate</span></h4>
         <p>Moving a share of the day's emission load from the warm half of the day to the cool half lowers the load-weighted ambient by about 1.27 x share x the day-night half-range, which feeds the stack temperature through the site regression. Mass load is unchanged.</p>
         <h4>Fan after the bed <span className="tag">high - physics</span></h4>
-        <p>The fan's heat of compression and any motor heat then reach the gas after the carbon, so the bed runs cooler by the fan temperature rise. Measure the rise across the fan to firm up the benefit.</p>
+        <p>The fan's heat of compression and any motor heat then reach the gas after the carbon, so the bed runs cooler by the fan temperature rise. The rise was measured at 4.0 C on 24 Nov 2026 (11.4 to 15.4 C, Plant 1 running, 3.4 C outside).</p>
         <h4>Interstage analyser (lead/lag) <span className="tag">medium</span></h4>
         <p>Changes the lead when an analyser between the beds reads a set share of inlet, with the stack held to a measured backstop. With the site-calibrated breakthrough curve the lead is only part-loaded when the stack nears the ELV, so the backstop usually sets the change; the inlet test will show whether that holds.</p>
         <h4>Partial changeout <span className="tag">medium</span></h4>

@@ -32,7 +32,7 @@ export const DEFAULT_SITE = {
   tFloor: 14, // lowest bed temperature the calibration is allowed to credit (deg C)
   throughput: 11, // creosote t per calendar day
   flow0: 9500, // m3/h current
-  fanHeat0: 2.0, // deg C temperature rise across the fan at current flow
+  fanHeat0: 4.0, // deg C rise across the fan at current flow: measured 24 Nov 2026 (11.4 -> 15.4 C, Testo)
   moistureAdd: 0.0, // kPa water vapour added by the process above ambient
   carbonMass0: 6000, // kg CX65 per charge
   bulkDensity: 480, // kg/m3
@@ -51,7 +51,7 @@ export const DEFAULT_SITE = {
   hoursPerDay: 21.7,
   // kW electrical at current flow (confirm from motor current). v2.8.1 audit: was 22 kW, more than the
   // 18.5 kW IE3 motor can draw continuously (~20 kW electrical at full load), which overstated VSD savings.
-  fanPower0: 20,
+  fanPower0: 14, // ~13 kW shaft from the 4.0 C rise (3.2 kg/s x 1.005 x 4.0), ~14 kW electrical; confirm by clamp meter
   fanEff: 0.65,
   trigger: 0.8, // change carbon at this fraction of ELV
   triggerWindow: 7, // days averaged for the changeout decision (planning basis, not single hot days)
