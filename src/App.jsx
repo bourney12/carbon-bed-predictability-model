@@ -356,14 +356,16 @@ const INITIAL_STACK_DATA = [
   // creoFromLog replaces it with the cleaned Daily Log figure whenever the synced log covers the period.
   // avgTemp/avgRH are Boston climatology for 25 Aug-4 Nov (Open-Meteo archive not yet pulled).
   { period:"P15", creoT:685, creoTEstimated:true, creoFromLog:true, workingDays:null, report:"JOB-3311 R1", date:"2026-11-04", periodStart:"2026-08-25", periodEnd:"2026-11-04", bedId:"Bed 7", bedDay:71, activeHrs:1541, activeHrsEstimated:true, avgTemp:13.1, avgTempEstimated:true, stackTemp:14.0, avgRH:83, voc:7.0, pah:264, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:6853, sameCarbon:false, dropletFalloutObserved:null },
-  // R2 (5 Nov, changeout day). Recorded but HELD from every calibration (calibrationHold) until the
-  // changeout time on 5 Nov is confirmed against the test times. If it is fresh Bed 8 carbon, a
-  // 1.2-1.5 mg/m3 TVOC plateau on new carbon conflicts with P13 (0.093 mg/m3) and would wreck the
-  // trial fit (R2 0.94 -> ~0.6). VOC run 10:45-17:15 (5.0 mg/m3 falling to ~1.3 after ~11:15);
-  // PAH run 16:16-17:16, stack 17.0 C. avgTemp/avgRH are November climatology.
-  { period:"P16", creoT:null, workingDays:null, report:"JOB-3311 R2", date:"2026-11-05", periodStart:"2026-11-05", periodEnd:"2026-11-05", bedId:"Bed 8", bedDay:0, activeHrs:null, activeHrsEstimated:true, avgTemp:7.4, avgTempEstimated:true, stackTemp:17.0, avgRH:87, voc:1.7, pah:67.5, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:6853, sameCarbon:false, dropletFalloutObserved:null,
+  // R2 (5 Nov, changeout day). Carbon changed ~08:00-13:00 with the fans OFF (confirmed by site, 27 Nov 2026).
+  // VOC run 10:45-17:15 straddles the no-flow changeover, so its certified 1.7 mg/m3 average is not a
+  // valid operating result; after the restart the trace sits at ~1.2-1.5 mg/m3 on fresh Bed 8 carbon.
+  // PAH run 16:16-17:16 is valid: fresh Bed 8, ~3-4 h after restart, stack 17.0 C.
+  // Held from every fit: the VOC result is invalid, and at near-zero loading neither ln(loading) model can
+  // represent a fresh-bed floor (trial PAH model predicts ~1 ug/m3 at 3 t vs 67.5 measured; blank 14.6).
+  // Kept as a fresh-bed baseline observation alongside P13.
+  { period:"P16", creoT:null, workingDays:null, report:"JOB-3311 R2", date:"2026-11-05", periodStart:"2026-11-05", periodEnd:"2026-11-05", bedId:"Bed 8", bedDay:0, activeHrs:4, activeHrsEstimated:true, avgTemp:7.4, avgTempEstimated:true, stackTemp:17.0, avgRH:87, voc:1.7, vocPostRestartApprox:1.3, pah:67.5, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:6853, sameCarbon:false, dropletFalloutObserved:null,
     calibrationHold:true,
-    holdNote:"JOB-3311 R2 was taken on the 5 Nov changeout day. Held from calibration until the changeout time is confirmed against the test times (VOC 10:45-17:15, PAH 16:16-17:16). If it was fresh Bed 8 carbon, its 1.7 mg/m3 TVOC conflicts with P13 (0.093 mg/m3 on 1-day-old carbon) and needs explaining before it enters the fit." },
+    holdNote:"Changeout day. Carbon changed ~08:00-13:00 with fans off. The VOC run (10:45-17:15) straddles the no-flow period, so 1.7 mg/m3 is not a valid operating result (~1.2-1.5 after restart). The PAH run (16:16-17:16) is a valid fresh Bed 8 result, but near-zero loading cannot be fitted by the ln(loading) models. Kept as a fresh-bed baseline, not fitted." },
 ];
 const INITIAL_CHARGES = [];
 
@@ -3565,7 +3567,7 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
         </div>
         <Fold title="About the calibration periods">
         <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>
-          P1-P3: same carbon charge (cumulative -- not independent data points). P4-P15: tests on fresh beds introduced under the programme (P5/P6 share Bed 3; P9-P12 share Bed 6; P13-P15 share Bed 7). P15 (JOB-3311 R1) creosote tonnage is estimated until the synced log covers it; P16 (JOB-3311 R2, changeout day) is held from calibration until the changeout time is confirmed. P9-P14 active hours are estimated at 21.7 hrs/day pending charge-log reconciliation. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses raw ambient temperature consistent with calibration basis. PAH model uses MCERTS stack temp.
+          P1-P3: same carbon charge (cumulative -- not independent data points). P4-P15: tests on fresh beds introduced under the programme (P5/P6 share Bed 3; P9-P12 share Bed 6; P13-P15 share Bed 7). P15 (JOB-3311 R1) creosote tonnage is estimated until the synced log covers it; P16 (JOB-3311 R2, changeout day) is a fresh-bed baseline held from calibration: its VOC run straddles the fans-off changeover, and near-zero loading cannot be fitted. P9-P14 active hours are estimated at 21.7 hrs/day pending charge-log reconciliation. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses raw ambient temperature consistent with calibration basis. PAH model uses MCERTS stack temp.
         </div>
         </Fold>
         <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>
