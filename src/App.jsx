@@ -95,7 +95,7 @@ function useTheme() {
 }
 const MONO = "'JetBrains Mono', Consolas, 'Courier New', monospace";
 const HEAD_FONT = "'Space Grotesk', Inter, system-ui, sans-serif";
-const MODEL_VERSION = "v2.10.0";
+const MODEL_VERSION = "v2.11.0";
 const MODEL_BUILD_DATE = "2026-11-24";
 
 // ============================================================
@@ -311,7 +311,7 @@ const STACK_TEMP_A = 13.506;
 const STACK_TEMP_B =  0.685;
 
 // ============================================================
-// SEED DATA P1-P14
+// SEED DATA P1-P16
 // ============================================================
 // v1.9.0 (2026-11-20): P8 updated to certified JOB-2865 (VOC 105, PAH 295,
 // stack 24.8C). P9-P14 added from Cura Terrae/Envirocare reports JOB-2963,
@@ -351,6 +351,19 @@ const INITIAL_STACK_DATA = [
   { period:"P12", creoT:926.7, creoTOriginal:1082.8, workingDays:58, report:"JOB-3083 R1", date:"2026-08-25", periodStart:"2026-06-05", periodEnd:"2026-08-25", bedId:"Bed 6", bedDay:81, activeHrs:1758, activeHrsEstimated:true, avgTemp:18.9, stackTemp:25.5, avgRH:67, voc:109, pah:1300, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
   { period:"P13", creoT:15.3, creoTOriginal:15.3, workingDays:1, report:"JOB-3083 R2", date:"2026-08-26", periodStart:"2026-08-25", periodEnd:"2026-08-26", bedId:"Bed 7", bedDay:1, activeHrs:22, activeHrsEstimated:true, avgTemp:19.6, stackTemp:28.8, avgRH:74, voc:0.093, pah:53.5, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:8990, sameCarbon:false, dropletFalloutObserved:null },
   { period:"P14", creoT:289.4, creoTOriginal:289.4, workingDays:21, report:"JOB-3146", date:"2026-09-24", periodStart:"2026-08-25", periodEnd:"2026-09-24", bedId:"Bed 7", bedDay:30, activeHrs:651, activeHrsEstimated:true, avgTemp:17.2, stackTemp:21.0, avgRH:75, voc:1.0, pah:33.8, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:9606, sameCarbon:false, dropletFalloutObserved:null },
+  // v2.11.0: JOB-3311 (Cura Terrae, 4-5 Nov 2026, report 26 Nov 2026). R1 (4 Nov) is the end of Bed 7,
+  // the day before the Bed 8 changeout. creoT 685 t is an ESTIMATE (P14 rate of 9.65 t/day x 71 days);
+  // creoFromLog replaces it with the cleaned Daily Log figure whenever the synced log covers the period.
+  // avgTemp/avgRH are Boston climatology for 25 Aug-4 Nov (Open-Meteo archive not yet pulled).
+  { period:"P15", creoT:685, creoTEstimated:true, creoFromLog:true, workingDays:null, report:"JOB-3311 R1", date:"2026-11-04", periodStart:"2026-08-25", periodEnd:"2026-11-04", bedId:"Bed 7", bedDay:71, activeHrs:1541, activeHrsEstimated:true, avgTemp:13.1, avgTempEstimated:true, stackTemp:14.0, avgRH:83, voc:7.0, pah:264, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:6853, sameCarbon:false, dropletFalloutObserved:null },
+  // R2 (5 Nov, changeout day). Recorded but HELD from every calibration (calibrationHold) until the
+  // changeout time on 5 Nov is confirmed against the test times. If it is fresh Bed 8 carbon, a
+  // 1.2-1.5 mg/m3 TVOC plateau on new carbon conflicts with P13 (0.093 mg/m3) and would wreck the
+  // trial fit (R2 0.94 -> ~0.6). VOC run 10:45-17:15 (5.0 mg/m3 falling to ~1.3 after ~11:15);
+  // PAH run 16:16-17:16, stack 17.0 C. avgTemp/avgRH are November climatology.
+  { period:"P16", creoT:null, workingDays:null, report:"JOB-3311 R2", date:"2026-11-05", periodStart:"2026-11-05", periodEnd:"2026-11-05", bedId:"Bed 8", bedDay:0, activeHrs:null, activeHrsEstimated:true, avgTemp:7.4, avgTempEstimated:true, stackTemp:17.0, avgRH:87, voc:1.7, pah:67.5, charges:null, p1Charges:null, p2Charges:null, measuredFlow_m3hr:6853, sameCarbon:false, dropletFalloutObserved:null,
+    calibrationHold:true,
+    holdNote:"JOB-3311 R2 was taken on the 5 Nov changeout day. Held from calibration until the changeout time is confirmed against the test times (VOC 10:45-17:15, PAH 16:16-17:16). If it was fresh Bed 8 carbon, its 1.7 mg/m3 TVOC conflicts with P13 (0.093 mg/m3 on 1-day-old carbon) and needs explaining before it enters the fit." },
 ];
 const INITIAL_CHARGES = [];
 
@@ -520,8 +533,10 @@ function bayesianUpdateNormal(mu0, sigma0Sq, observations, predictions, sigmaNSq
 // VOC calibration: ln(VOC) = a*ln(rawHrs) + b*ambientTemp + c + humidityPenalty.
 // Uses independent carbon charge periods only. P1-P3 are same-carbon cumulative
 // observations and are shown for transparency, not fitted as independent points.
+// v2.11.0: a test can be recorded but held out of every calibration (calibrationHold) while a question about it is open.
+function inCalibration(d) { return !!d && d.calibrationHold !== true; }
 function calibrateVOC(stackData) {
-  const v = stackData.filter(d => d.voc != null && d.activeHrs > 0 && d.sameCarbon !== true);
+  const v = stackData.filter(d => inCalibration(d) && d.voc != null && d.activeHrs > 0 && d.sameCarbon !== true);
   if (v.length < 3) return { a: D_VOC_A, b: D_VOC_B, c: D_VOC_C, r2: null, r2_loo: null, n_folds: 0, rmse: VOC_RMSE_LOG, n: v.length, bayesC: null, bayesianActive: false, bayesianStatus: "Inactive - n < 4" };
   const effectiveHours = v.map(d=>effectiveHoursForStackRecord(d));
   // v2.1.0: the humidity term added in predictVOC is removed from the targets before fitting,
@@ -563,9 +578,9 @@ function calibrateVOC(stackData) {
 // Any future decision to formally re-include P2 in PAH calibration
 // must be documented and agreed with the Environment Agency.
 function calibratePAH(stackData) {
-  const fresh = stackData.filter(d => d.pah != null && d.sameCarbon === false &&
+  const fresh = stackData.filter(d => inCalibration(d) && d.pah != null && d.sameCarbon === false &&
     d.stackTemp != null && d.activeHrs > 0);
-  const all   = stackData.filter(d => d.pah != null && d.stackTemp != null && d.activeHrs > 0);
+  const all   = stackData.filter(d => inCalibration(d) && d.pah != null && d.stackTemp != null && d.activeHrs > 0);
   const v = fresh.length >= 3 ? fresh : all;
   if (v.length < 3) {
     return { a: D_PAH_A, b: D_PAH_B, c: D_PAH_C, r2: null, rmse: PAH_RMSE_LOG, n: v.length, freshOnly: fresh.length >= 3, bayesC: null, bayesianActive: false, bayesianStatus: "Inactive - n < 4" };
@@ -625,7 +640,7 @@ function looLogRMSE(x1arr, x2arr, yarr, lam) {
   return k ? Math.sqrt(ss / k) : null;
 }
 function calibrateCreoModel(stackData) {
-  const v = (stackData || []).filter(d => d.sameCarbon !== true && d.creoT > 0 && d.stackTemp != null);
+  const v = (stackData || []).filter(d => inCalibration(d) && d.sameCarbon !== true && d.creoT > 0 && d.stackTemp != null);
   const vv = v.filter(d => d.voc != null && d.voc > 0);
   const pp = v.filter(d => d.pah != null && d.pah > 0);
   if (vv.length < 4 || pp.length < 4) return { ready:false, n:vv.length };
@@ -638,8 +653,8 @@ function calibrateCreoModel(stackData) {
 }
 // Same leave-one-out log RMSE for the operative run-hours model, so the two can be compared like for like.
 function operativeLooLogRMSE(stackData) {
-  const v = (stackData || []).filter(d => d.voc != null && d.activeHrs > 0 && d.sameCarbon !== true);
-  const p = (stackData || []).filter(d => d.pah != null && d.sameCarbon === false && d.stackTemp != null && d.activeHrs > 0);
+  const v = (stackData || []).filter(d => inCalibration(d) && d.voc != null && d.activeHrs > 0 && d.sameCarbon !== true);
+  const p = (stackData || []).filter(d => inCalibration(d) && d.pah != null && d.sameCarbon === false && d.stackTemp != null && d.activeHrs > 0);
   const adj = v.map(d=>d.voc / Math.exp((1 - humidityFactor(d.avgRH)) * 0.6));
   return {
     voc: looLogRMSE(v.map(d=>Math.log(Math.max(effectiveHoursForStackRecord(d), 1))), v.map(d=>d.avgTemp), adj, 0.1),
@@ -1656,7 +1671,7 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
     return { period:d.period, actual:d.voc, pred, err: Math.round(((d.voc - pred) / Math.max(pred, 0.1)) * 100) };
   });
   // v1.9.0: largest residuals found dynamically among calibration periods (log ratio), not hard-coded to P4/P7.
-  const calibResiduals = INITIAL_STACK_DATA.filter(d=>d.voc != null && d.activeHrs > 0 && d.sameCarbon === false)
+  const calibResiduals = INITIAL_STACK_DATA.filter(d=>inCalibration(d) && d.voc != null && d.activeHrs > 0 && d.sameCarbon === false)
     .map(d=>residualRows.find(r=>r.period===d.period)).filter(Boolean)
     .map(r=>({ ...r, lr: Math.log(Math.max(r.actual,0.01)/Math.max(r.pred,0.1)) }));
   const underRow = calibResiduals.length ? calibResiduals.reduce((m,r)=>r.lr>m.lr?r:m) : null;
@@ -1700,7 +1715,7 @@ function ModelStatusBanner({ vocC, pahC, settings }) {
         </Fold>
         {(function() {
           var bayesRefPeriod = INITIAL_STACK_DATA.filter(function(d) {
-            return d.sameCarbon === false && d.voc != null;
+            return inCalibration(d) && d.sameCarbon === false && d.voc != null;
           }).slice(-1)[0];
           if (!bayesRefPeriod || !vocC.bayesianActive || !vocC.bayesC) return null;
           var bayesEffectiveHrs = effectiveHoursForStackRecord(bayesRefPeriod);
@@ -3436,7 +3451,7 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
     const tOperative = operativeTemp(d.avgTemp, stackTempCorrection);
     const effectiveHrs = effectiveHoursForStackRecord(d);
     const vocPred = d.voc!=null ? predictVOC(effectiveHrs,d.avgTemp,d.avgRH,vocC) : null;
-    const bayesResidual = d.sameCarbon === false && d.voc != null
+    const bayesResidual = inCalibration(d) && d.sameCarbon === false && d.voc != null
       ? Math.log(Math.max(d.voc, 0.01)) - (vocC.a * Math.log(Math.max(effectiveHrs, 1)) + vocC.b * d.avgTemp + vocC.c + ((1 - humidityFactor(d.avgRH)) * 0.6))
       : null;
     const st = d.stackTemp!=null ? d.stackTemp : d.avgTemp+10;
@@ -3526,6 +3541,7 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
                       <td style={{ padding:"5px 7px", fontSize:12, color:C.muted }}>
                         <div>{same?"same C/O":baseline?"baseline":""}</div>
                         {baseline && <div style={{ marginTop:4 }}><Badge text="Pre-ELV baseline" color={C.blue} /></div>}
+                        {row.calibrationHold && <div style={{ marginTop:4 }} title={row.holdNote || ""}><Badge text="Held from fit" color={C.amber} /></div>}
                         {row.flowAnomalous && (
                           <div style={{ marginTop:4 }}>
                             <Badge text="Flow: unresolved" color={C.amber} />
@@ -3549,7 +3565,7 @@ function ModelDetailsTab({ stackData, vocC, pahC, settings, latestCarbonBatch })
         </div>
         <Fold title="About the calibration periods">
         <div style={{ fontSize:12, color:C.muted, marginTop:8 }}>
-          P1-P3: same carbon charge (cumulative -- not independent data points). P4-P14: tests on fresh beds introduced under the programme (P5/P6 share Bed 3; P9-P12 share Bed 6; P13/P14 share Bed 7). P9-P14 active hours are estimated at 21.7 hrs/day pending charge-log reconciliation. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses raw ambient temperature consistent with calibration basis. PAH model uses MCERTS stack temp.
+          P1-P3: same carbon charge (cumulative -- not independent data points). P4-P15: tests on fresh beds introduced under the programme (P5/P6 share Bed 3; P9-P12 share Bed 6; P13-P15 share Bed 7). P15 (JOB-3311 R1) creosote tonnage is estimated until the synced log covers it; P16 (JOB-3311 R2, changeout day) is held from calibration until the changeout time is confirmed. P9-P14 active hours are estimated at 21.7 hrs/day pending charge-log reconciliation. P2 excluded from both VOC and PAH calibration for consistency: sameCarbon=true cumulative observations are not independent data points in either model. P2 certified results (VOC 45.0 mg/m3, PAH 865 ug/m3) are displayed for transparency only. VOC model uses raw ambient temperature consistent with calibration basis. PAH model uses MCERTS stack temp.
         </div>
         </Fold>
         <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>
@@ -4499,7 +4515,7 @@ function ForwardForecastTab({ stackData, settings, onSettingChange, lastChangeou
   const exportSchedule = () => {
     const rmse = vocUncertaintyMultiplier(vocC);
     var calibPeriods = stackData.filter(function(d) {
-      return d.sameCarbon === false && d.voc != null;
+      return inCalibration(d) && d.sameCarbon === false && d.voc != null && d.activeHrs > 0;
     });
     var calibMinHrs = Math.min.apply(null, calibPeriods.map(function(d) { return d.activeHrs; }));
     var calibMaxHrs = Math.max.apply(null, calibPeriods.map(function(d) { return d.activeHrs; }));
@@ -6402,7 +6418,13 @@ export default function App() {
       const kg = cleanUsageKg(creoClean.rows, String(d.periodStart).slice(0,10), String(d.date).slice(0,10));
       return kg == null ? d : { ...d, creoT: Math.round(kg / 100) / 10 };
     });
-    return [...INITIAL_STACK_DATA, ...extras];
+    // v2.11.0: seed tests flagged creoFromLog carry an estimated tonnage until the synced log covers them.
+    const seeds = INITIAL_STACK_DATA.map(d => {
+      if (!d.creoFromLog || !d.periodStart || !d.date) return d;
+      const kg = cleanUsageKg(creoClean.rows, String(d.periodStart).slice(0,10), String(d.date).slice(0,10));
+      return kg == null || kg <= 0 ? d : { ...d, creoT: Math.round(kg / 100) / 10, creoTEstimated: false };
+    });
+    return [...seeds, ...extras];
   }, [stackDataExtra, creoClean]);
   const coaData = platformState.cgb_coaData;
   const setCoaData = useCallback(nextValueOrUpdater => updateKey("cgb_coaData", nextValueOrUpdater), [updateKey]);
